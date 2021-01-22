@@ -1,0 +1,2258 @@
+[33mcommit a653772e5cbaa069e40c1be4cfbc32e01e2b8743[m[33m ([m[1;31morigin/integration[m[33m)[m
+Merge: 1d6d46871 35392bdeb
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri May 19 11:01:33 2017 +0200
+
+    Merge pull request #1038 from dpalou/MOBILE-2103
+    
+    MOBILE-2103 splitview: Clone state params object in split view states
+
+[33mcommit 35392bdebea29e0b5058ff9174698a758279ad5d[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri May 19 10:56:25 2017 +0200
+
+    MOBILE-2103 splitview: Clone state params object in split view states
+    If the objects are modified inside the controller, Ionic will open the left state again when loading the split view content.
+
+[33mcommit 1d6d4687163ddbf51f3b8073148a236433014ecb[m
+Merge: 86a719a61 95166639d
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri May 19 09:21:22 2017 +0200
+
+    Merge pull request #1037 from crazyserver/MOBILE-2103
+    
+    Mobile 2103
+
+[33mcommit 86a719a615b6e8412ecb297b71c96f3b2fee3dec[m
+Merge: 833ee220d 83124def2
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri May 19 09:21:05 2017 +0200
+
+    Merge pull request #1036 from dpalou/MOBILE-2103
+    
+    MOBILE-2103 splitview: Fix empty message in iPad
+
+[33mcommit 95166639dad4552b4ad65db41fb4b08e30e339e5[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu May 18 15:15:10 2017 +0200
+
+    MOBILE-2103 core: Fix some button colors
+
+[33mcommit d09e3b63c5d421a3c64e096270b7e70e2b0de92f[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu May 18 15:26:31 2017 +0200
+
+    MOBILE-2103 completion: Solve completion click
+
+[33mcommit ae9e9c10575053cf97c17e16f59640e5e5fabb2b[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu May 18 16:04:40 2017 +0200
+
+    MOBILE-2103 overview: Fix switch grid button
+
+[33mcommit 83124def21156aa83d5d34c4eeb8f1890ca6e7e1[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu May 18 16:01:44 2017 +0200
+
+    MOBILE-2103 splitview: Fix empty message in iPad
+
+[33mcommit 833ee220d611d1d5b89db3a86f19d475a0d39f6b[m
+Merge: 37c797bd8 675fdac1b
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 18 15:22:11 2017 +0200
+
+    Merge pull request #1035 from dpalou/MOBILE-2103
+    
+    Mobile 2103
+
+[33mcommit 675fdac1be9d8854a261142d5bc33e8b6333e896[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu May 18 13:48:31 2017 +0200
+
+    MOBILE-2103 autofocus: Fix autofocus problem with scrolling
+
+[33mcommit 4d2c0fcdc04fbe7a712a474190cc096085fce80a[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu May 18 11:45:28 2017 +0200
+
+    MOBILE-2103 notificationpopover: Remove ion-content
+    It caused problems with $ionicScrollDelegate, it always used the modal scroll by default instead of the view scroll
+
+[33mcommit 37c797bd8ac088f70515e49ab62c3463ad511386[m
+Merge: a71870902 401241b44
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 18 12:42:01 2017 +0200
+
+    Merge pull request #1033 from crazyserver/MOBILE-2105
+    
+    MOBILE-2105 core: Review some warning card icons
+
+[33mcommit 401241b44e91c565cd134f2816e9f8c92492160b[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu May 18 12:13:12 2017 +0200
+
+    MOBILE-2105 core: Review some warning card icons
+
+[33mcommit a71870902fbf270a148ef9bafa8a9015d6e6a1a2[m
+Merge: 1a374f792 16426e8bf
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 18 12:07:51 2017 +0200
+
+    Merge pull request #1032 from crazyserver/MOBILE-2105
+    
+    Mobile 2105
+
+[33mcommit 16426e8bf5893d136cc79e5f65b361727177099a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu May 18 10:58:09 2017 +0200
+
+    MOBILE-2105 login: Fix sign up and logo
+
+[33mcommit 5b18a3604e5c49da2d91e7f5ea42a77afd2f9b28[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu May 18 10:21:38 2017 +0200
+
+    MOBILE-2105 profile: Hide empty box if page is not empty
+
+[33mcommit 81aeb037019afbdbe2c8e4376efa64dffd4fe778[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed May 17 10:03:41 2017 +0200
+
+    MOBILE-2105 overview: Fix overview styles
+
+[33mcommit 8ba5ae14293f6cd8dab3195acdeecf96e7c1c23b[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed May 17 15:57:51 2017 +0200
+
+    MOBILE-2105 core: Center short inline badges
+
+[33mcommit d961587050d8d5f4865da6092225694ba474a1e3[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed May 17 15:30:07 2017 +0200
+
+    MOBILE-2105 core: Style progress bars
+
+[33mcommit 7bb68c47373de602dad9840cfe4f17a7850c118b[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed May 17 13:33:59 2017 +0200
+
+    MOBILE-2105 course: Reduce padding on section badges
+
+[33mcommit 1a374f792719bfdddc9e60eef86e7f5f8fc5b61a[m
+Merge: da57fe2bb 43b7e1ed8
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed May 17 15:48:47 2017 +0200
+
+    Merge pull request #1031 from dpalou/MOBILE-1789
+    
+    Mobile 1789
+
+[33mcommit da57fe2bb6d6a9fe29a1d3ac87fd137665f6f56d[m
+Merge: b5a23f303 69fda2acf
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed May 17 15:32:01 2017 +0200
+
+    Merge pull request #1030 from dpalou/MOBILE-2017
+    
+    Mobile 2017
+
+[33mcommit 43b7e1ed883bb5538472f8c42116785f430efb03[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed May 17 15:23:28 2017 +0200
+
+    MOBILE-1789 notifications: Fix console error caused by padding
+
+[33mcommit 84112a2cb752e659b0915502d106d25ddaf0633e[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed May 17 15:13:39 2017 +0200
+
+    MOBILE-1789 loading: Remove margin top from mm-loading
+
+[33mcommit b5a23f3039ca6737eafd875b4e3729acade4f748[m
+Merge: c2ce71de7 03fceec83
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed May 17 13:45:18 2017 +0200
+
+    Merge pull request #1029 from crazyserver/MOBILE-2087
+    
+    MOBILE-2087 lesson: Refurbish lesson styles
+
+[33mcommit 69fda2acf480fa2be803522824baf800886dc55a[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed May 17 09:52:26 2017 +0200
+
+    MOBILE-2017 lesson: Reorder functions with new terminology
+
+[33mcommit 097b37106651499d2c2be534cc0ec2a2d69091eb[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed May 17 09:23:45 2017 +0200
+
+    MOBILE-2017 lesson: Review lesson terminology (code)
+
+[33mcommit f4770a3e470e0cfe5da831d388657ce89d58fe4b[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon May 15 11:13:29 2017 +0200
+
+    MOBILE-2017 lesson: Capture reports links
+
+[33mcommit 2d81a4c0093d39410d77b352a2a7a361e8be9ddc[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Mar 27 12:01:05 2017 +0200
+
+    MOBILE-2017 lesson: Capture view links
+
+[33mcommit 03fceec838f43b428d2651c304b2886e01b7b40a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon May 15 16:39:31 2017 +0200
+
+    MOBILE-2087 lesson: Refurbish lesson styles
+
+[33mcommit c2ce71de763cecfdd7d8a5fea9ecc59cfe69e037[m
+Merge: 8dce46ec2 f7facc7f7
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed May 17 11:50:30 2017 +0200
+
+    Merge pull request #1028 from dpalou/MOBILE-2063
+    
+    MOBILE-2063 filepool: Only invalidate files external or unknow rev/time
+
+[33mcommit 8dce46ec2579b48189a3c82892c7c9dda7666f3b[m
+Merge: 2626b2c76 db069b984
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed May 17 10:32:37 2017 +0200
+
+    Merge pull request #1027 from dpalou/MOBILE-2108
+    
+    Mobile 2108
+
+[33mcommit f7facc7f7dd18898f4dfae4c75d9990a66c7b744[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue May 16 11:31:36 2017 +0200
+
+    MOBILE-2063 filepool: Only invalidate files external or unknow rev/time
+
+[33mcommit db069b98423d61f2a2ed469e9cbd0e816de3d641[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue May 16 09:51:54 2017 +0200
+
+    MOBILE-2108 calendar: Don't show empty box while PTR
+
+[33mcommit cc78a1327fc7ad1ca3dfcb03fe1e4dc00dffe11c[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue May 16 09:19:10 2017 +0200
+
+    MOBILE-2108 calendar: Sort events by timestart
+
+[33mcommit db72faae5a0e7f25e172e14f14688f9e01b15b7a[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue May 16 08:52:35 2017 +0200
+
+    MOBILE-2108 img: Remove ionic icon
+
+[33mcommit 2626b2c769ddfb198ec90362bb573501637e6306[m
+Merge: 434f39457 8e8cd0bd9
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 15 13:42:15 2017 +0200
+
+    Merge pull request #1026 from crazyserver/MOBILE-2105
+    
+    MOBILE-2105 splitview: Show message when right panel is empty
+
+[33mcommit 8e8cd0bd90ce87d16d9c22a5457d51e88c27a8fc[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon May 15 12:25:09 2017 +0200
+
+    MOBILE-2105 splitview: Show message when right panel is empty
+
+[33mcommit 434f39457681db354a5e0bb35c31751aac0b602f[m
+Merge: 3cd680c4e 995fae63a
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 15 12:08:47 2017 +0200
+
+    Merge pull request #1025 from crazyserver/MOBILE-2078
+    
+    Mobile 2078
+
+[33mcommit 995fae63acd4561f9f6c97fc87325c3520ea38f0[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon May 15 11:45:08 2017 +0200
+
+    MOBILE-2078 overview: Show tab courses by default
+
+[33mcommit 72c625c2253b0579d23eb99be0c58f555fad6431[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon May 15 11:41:01 2017 +0200
+
+    MOBILE-2078 overview: Add event action button
+
+[33mcommit 3cd680c4e73ec2b6e778399bfdd097978cbd8498[m
+Merge: 875c25cab 597483429
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 15 11:27:08 2017 +0200
+
+    Merge pull request #1024 from dpalou/MOBILE-2052
+    
+    Mobile 2052
+
+[33mcommit 875c25cabf002a3f90c23f6c99eba22b48d1ebfb[m
+Merge: 8971c6602 0943bbdf2
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 15 10:46:44 2017 +0200
+
+    Merge pull request #1023 from dpalou/MOBILE-2107
+    
+    MOBILE-2107 resource: Open GDocs and OneDrive docs in browser
+
+[33mcommit 8971c660283d6982acb56f15f84f5cbe01abb06a[m
+Merge: 99d4d8037 5ef441702
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 15 10:38:03 2017 +0200
+
+    Merge pull request #1022 from crazyserver/MOBILE-2105
+    
+    Mobile 2105
+
+[33mcommit 5ef44170248ed653813722327f6aac0a1bc35b26[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu May 11 11:17:17 2017 +0200
+
+    MOBILE-2105 core: Apply new palette
+
+[33mcommit e19c22069d2825f1bcd9184a667b303c6214ce93[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed May 10 12:57:17 2017 +0200
+
+    MOBILE-2105 login: Improve init page
+
+[33mcommit 6d1d15cbf9e6d456070fb33f4eaeb51c69407ee6[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed May 10 15:17:33 2017 +0200
+
+    MOBILE-2105 core: Fix all centered on page items
+
+[33mcommit a557a50679d93c0e787bdd4cc0f21e7d49eef523[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed May 10 12:55:54 2017 +0200
+
+    MOBILE-2105 core: Fix empty boxes
+
+[33mcommit 59748342976ac593a62f8893104a2b7befd80dbb[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri May 12 08:56:33 2017 +0200
+
+    MOBILE-2052 lesson: Don't show question text in feedback
+
+[33mcommit babe67e87d9f0c3e560105922e151faf3f6789dd[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu May 11 15:49:07 2017 +0200
+
+    MOBILE-2052 lesson: Implement view user attempt
+
+[33mcommit 73467337fb807194380a74a036f7e656e0f2a85c[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed May 10 14:58:02 2017 +0200
+
+    MOBILE-2052 core: Implement $mmUtil#formatTimeInstant
+
+[33mcommit c0be4a9028df19cd946d154810bf06d267999bb3[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue May 9 10:19:41 2017 +0200
+
+    MOBILE-2052 lesson: Implement view attempts overview
+
+[33mcommit 93152afb3f62c368c0217bbf0034ee480191bd9e[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Apr 27 16:06:55 2017 +0200
+
+    MOBILE-2052 lesson: Adapt preview for teachers
+
+[33mcommit 0943bbdf20106c6e75146f064d52e5bbf3aff972[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri May 12 13:32:58 2017 +0200
+
+    MOBILE-2107 resource: Open GDocs and OneDrive docs in browser
+
+[33mcommit 29b1e02ec348297ca77a0a6e97b8da5c023fc543[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue May 9 16:20:44 2017 +0200
+
+    MOBILE-2105 login: Improve site adding pages
+
+[33mcommit 99d4d803707293e9ecc190e2f6fded4878c00c48[m
+Merge: 739373b67 e4c9e4137
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri May 12 12:00:53 2017 +0200
+
+    Merge pull request #1020 from dpalou/MOBILE-2096-1
+    
+    MOBILE-2096 oauth: Always open oauth in browser
+
+[33mcommit e4c9e4137353eece0c817561335cb56464bd0d90[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri May 12 09:46:04 2017 +0200
+
+    MOBILE-2096 oauth: Always open oauth in browser
+
+[33mcommit 739373b674fe3a264adbed5d192948517056dbde[m
+Merge: 98b2830d7 088642f9b
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed May 10 14:54:54 2017 +0200
+
+    Merge pull request #1019 from crazyserver/MOBILE-2106
+    
+    Mobile 2106
+
+[33mcommit 98b2830d7c88c862835ab04a87476753bc685d8d[m
+Merge: 88bfa67ae 17fda51ef
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed May 10 11:32:22 2017 +0200
+
+    Merge pull request #1018 from crazyserver/MOBILE-2038
+    
+    Mobile 2038
+
+[33mcommit 088642f9b6d0fb393ef72307e67e406fccc67251[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon May 8 15:08:18 2017 +0200
+
+    MOBILE-2106 groups: Move group helper function to core
+
+[33mcommit 7392ad6d751053757100fad46a0256739e48b31d[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue May 9 14:13:16 2017 +0200
+
+    MOBILE-2106 feedback: Fix group fetching
+
+[33mcommit 0bf5b495ed7c77712ad68c886cf4cded8456bff7[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue May 9 14:12:53 2017 +0200
+
+    MOBILE-2106 feedback: Fix captcha message
+
+[33mcommit 1574f4b6338f99f618bd14255080dc2fcdb74b13[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue May 9 14:09:39 2017 +0200
+
+    MOBILE-2106 feedback: Merge analysis and overview tabs
+
+[33mcommit 88bfa67ae5a3e7665ee54f57f8d6c08a4dda4bf2[m
+Merge: 286a06abe 5a81921c6
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue May 9 12:41:04 2017 +0200
+
+    Merge pull request #1016 from dpalou/MOBILE-2077
+    
+    Mobile 2077
+
+[33mcommit 17fda51efbf781f97f448610b06dab5b9fa34d89[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon May 8 10:35:51 2017 +0200
+
+    MOBILE-2038 db: Send error reports on demand
+
+[33mcommit d1d5da5ee694fc893525b85c5d6a5d4425e6ff00[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon May 8 10:07:30 2017 +0200
+
+    MOBILE-2038 db: Check keypath before inserting
+
+[33mcommit 008ab174ce1f1ab90e82d13fa1f2569264f899d7[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri May 5 14:37:49 2017 +0200
+
+    MOBILE-2038 db: Do not register stores with invalid keyPath
+
+[33mcommit 286a06abec9fad8ddc175ede1fdc0b60cd1d37ce[m
+Merge: 202b47751 ed9d8b9d4
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 8 16:37:20 2017 +0200
+
+    Merge pull request #1015 from jleyva/MOBILE-2102
+    
+    MOBILE-2102 cordova: Append MoodleMobile to UserAgent
+
+[33mcommit 202b477510699ac4b50736382e34d7264973fbf2[m
+Merge: d704e42aa 2d0c17c1b
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 8 16:09:13 2017 +0200
+
+    Merge pull request #1014 from crazyserver/MOBILE-2098-1
+    
+    MOBILE-2098 login: Center page
+
+[33mcommit 2d0c17c1b0626823d6c69ec84b499c523dac2629[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon May 8 15:49:29 2017 +0200
+
+    MOBILE-2098 login: Center page
+
+[33mcommit d704e42aa5192970da791ca81a74b53c989d2bbe[m
+Merge: 001068c1c 6d8da1184
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 8 15:24:24 2017 +0200
+
+    Merge pull request #1013 from crazyserver/MOBILE-2092
+    
+    MOBILE-2092 course: Support activities access restriction
+
+[33mcommit 6d8da11842da5da05cf0b1f7772ba57ec741ae6b[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri May 5 13:37:19 2017 +0200
+
+    MOBILE-2092 course: Support activities access restriction
+
+[33mcommit ed9d8b9d48734bc0183304d1379a060a1076eee2[m[33m ([m[1;31morigin/MOBILE-2102[m[33m)[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 8 14:38:25 2017 +0200
+
+    MOBILE-2102 cordova: Append MoodleMobile to UserAgent
+
+[33mcommit 001068c1c1292c4817f0cd4fc8b2d8f1602e5bbc[m
+Merge: 74b9a9e26 7d0d43e41
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 8 13:16:24 2017 +0200
+
+    Merge pull request #1012 from crazyserver/MOBILE-2100
+    
+    MOBILE-2100 core: Add empty boxes style
+
+[33mcommit 74b9a9e266a4895c18b69aeda00fba1679535e91[m
+Merge: 72bc05214 3c3989d31
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 8 13:01:17 2017 +0200
+
+    Merge pull request #1011 from crazyserver/MOBILE-2098
+    
+    Mobile 2098
+
+[33mcommit 72bc05214b6d932fd0f662406efa6496e0966050[m
+Merge: d861eef21 3ffc92b4a
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon May 8 12:25:14 2017 +0200
+
+    Merge pull request #1010 from dpalou/MOBILE-2016
+    
+    Mobile 2016
+
+[33mcommit 5a81921c6f8d690672557aaecf749a2154b2f312[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon May 8 10:41:52 2017 +0200
+
+    MOBILE-2077 http: Fix error when checking RTF file in iOS
+
+[33mcommit 7c0385a3de08820af75f039a6b1cc9dd6c96669c[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu May 4 15:53:32 2017 +0200
+
+    MOBILE-2077 files: Detect right extension in GDrive files
+
+[33mcommit 02a86abe7241094543328ac844b37ff9ceeb6207[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu May 4 08:58:30 2017 +0200
+
+    MOBILE-2077 files: Download media from external sites
+
+[33mcommit 3c3989d31dd6e0d98a617c56c7ef44f20b73ed5c[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri May 5 12:30:24 2017 +0200
+
+    MOBILE-2098 login: Remove autofocus during login and reconnect
+
+[33mcommit 6ce8b3c68776503f4b9922456167316965bfd062[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu May 4 16:57:35 2017 +0200
+
+    MOBILE-2098 login: Show spinner while checking site
+
+[33mcommit 3ffc92b4afb3590d7d32aee05a363b5b16b4a9a5[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Apr 25 09:21:01 2017 +0200
+
+    MOBILE-2016 lesson: Allow reviewing attempts finished in synchronization
+
+[33mcommit 31f8bdc2f7cd8c3af64045e87af62395f38cefd0[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Apr 24 13:54:52 2017 +0200
+
+    MOBILE-2016 lesson: Adapt sync to new data model and send in order
+
+[33mcommit c4a8ac9f19be543681d53ee0b534b1341be81d6c[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Apr 24 12:10:47 2017 +0200
+
+    MOBILE-2016 lesson: Update cached data when data sent in online
+
+[33mcommit 17cd9bcba8ecb6d544938ef911fcfe319a5ab51c[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Apr 24 11:56:50 2017 +0200
+
+    MOBILE-2016 lesson: Handle questions in lessonGrade
+
+[33mcommit a3262ac19e0b4641c79563bab9605ec6e28282da[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Apr 21 09:00:34 2017 +0200
+
+    MOBILE-2016 lesson: Check questions in calculate progress
+
+[33mcommit 4c5001e1390d83c0eb985e82003655cd525cdec6[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Apr 20 14:08:05 2017 +0200
+
+    MOBILE-2016 lesson: Handle questions without answers
+
+[33mcommit 34b0c2cfa6eb39068bda56d52270923a6e2bd291[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Apr 20 12:25:34 2017 +0200
+
+    MOBILE-2016 lesson: Allow answering questions in offline
+
+[33mcommit 3d3f2f764f1fa7f8481b04e9e35976f7fa3d68f1[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed Apr 19 10:52:48 2017 +0200
+
+    MOBILE-2016 lesson: Allow storing multiple offline answers per page
+
+[33mcommit 8b029327c7bf43e018a5ff427e9bef461e28c9af[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Sun Apr 30 14:27:23 2017 +0200
+
+    MOBILE-2098 login: Improve login look and feel
+
+[33mcommit 7d0d43e411bbff4401771d5070c05c7a6711d98e[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Sun Apr 30 17:40:40 2017 +0200
+
+    MOBILE-2100 core: Add empty boxes style
+
+[33mcommit d28ecb85bc773bd412576f83b63191e0ec8066f0[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed May 3 12:35:34 2017 +0200
+
+    MOBILE-2077 resource: Support embedded files
+
+[33mcommit ccee2a2a9f1e25bf2897963e262cb0ce592b649e[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue May 2 16:13:49 2017 +0200
+
+    MOBILE-2077 mimetypes: Add Google Drive mimetypes
+
+[33mcommit aa0cf27f90fd766c5d5a9f12fab4d47abf0579bd[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue May 2 13:45:14 2017 +0200
+
+    MOBILE-2077 files: Show refresh in resource and mm-file if external
+
+[33mcommit d0223e39e8aa079e0cc422865329a69ff7e5b96a[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Apr 28 12:58:43 2017 +0200
+
+    MOBILE-2077 files: Handle external files in filepool
+
+[33mcommit d861eef21c5a377189127e12ded50438b29330c8[m
+Merge: 04fc96a01 db098ad21
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 4 15:04:22 2017 +0200
+
+    Merge pull request #1009 from crazyserver/MOBILE-2028
+    
+    MOBILE-2028 section: Invalidate new modules to enable prefetch
+
+[33mcommit 04fc96a01ba84a7e51683dee8ddba7fa9d2f2817[m
+Merge: 6e6255ce4 b1d90385e
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 4 14:57:46 2017 +0200
+
+    Merge pull request #1007 from dpalou/MOBILE-2096
+    
+    Mobile 2096
+
+[33mcommit db098ad218f83a8dd465c887a4da5c06ad199593[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Sun Apr 30 16:25:59 2017 +0200
+
+    MOBILE-2028 section: Invalidate new modules to enable prefetch
+
+[33mcommit b1d90385ea8f1d82282d7a87998101460c7f9385[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu May 4 10:25:26 2017 +0200
+
+    MOBILE-2096 login: Check iconurl and name for Google
+
+[33mcommit b1c35d501b3dd76515a61cdd2fe4d0e90d08e734[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed Apr 26 08:55:41 2017 +0200
+
+    MOBILE-2096 login: Support OAuth buttons
+
+[33mcommit a0f238f8bdbdfbd9edc8df4a2af5d8d9317731e7[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Apr 25 14:54:18 2017 +0200
+
+    MOBILE-2096 login: Simplify credentials screen
+
+[33mcommit 6e6255ce44f7cbc773da6f4dfbff6e8dd2f67fc4[m
+Merge: 17e95cc42 8f89a55d0
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 4 14:51:03 2017 +0200
+
+    Merge pull request #1006 from crazyserver/MOBILE-2099
+    
+    Mobile 2099
+
+[33mcommit 17e95cc427fef1190b61b2c4224811200b997031[m
+Merge: 56d1031c1 593578aba
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 4 13:39:46 2017 +0200
+
+    Merge pull request #1005 from crazyserver/MOBILE-2055
+    
+    MOBILE-2055 formattext: Inherit font color property
+
+[33mcommit 56d1031c1e21df01a76e65815d1dfa19d2e89b56[m
+Merge: 25d4d0a14 eb530ccca
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 4 13:38:10 2017 +0200
+
+    Merge pull request #1004 from crazyserver/MOBILE-2049
+    
+    MOBILE-2049 formattext: Support atto classes for images
+
+[33mcommit 8f89a55d06d401c83e9b1fde2fe2b1c2b2b8b103[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Sun Apr 30 11:10:46 2017 +0200
+
+    MOBILE-2099 quiz: Improve styles using default color palette
+
+[33mcommit c688a0fc2297510c976df3efc1d87e71d27a543a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Sun Apr 30 11:11:29 2017 +0200
+
+    MOBILE-2099 quiz: Add Next/Previous buttons on quiz player
+
+[33mcommit 593578aba6469d75569b38cc91a75aaf83214470[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Apr 28 16:54:05 2017 +0200
+
+    MOBILE-2055 formattext: Inherit font color property
+
+[33mcommit eb530cccadbcdb34cc3916064150640603d6248f[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Apr 28 15:09:02 2017 +0200
+
+    MOBILE-2049 formattext: Support atto classes for images
+
+[33mcommit 25d4d0a146652cf2ed60508b2a748b4eea7a5b0d[m
+Merge: 0624cca81 95ba0d05a
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu May 4 12:56:49 2017 +0200
+
+    Merge pull request #1003 from crazyserver/MOBILE-2078
+    
+    Mobile 2078
+
+[33mcommit 95ba0d05a02169450f9abd992dc3b7de5c6629ec[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed May 3 15:39:38 2017 +0200
+
+    MOBILE-2078 overview: Refresh course options on PTR
+
+[33mcommit 430369e932399e4e9ba2551497172485c3db4c1e[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Apr 27 15:32:06 2017 +0200
+
+    MOBILE-2078 styles: Add a color palette
+
+[33mcommit 0624cca811c78c91d970841309d2b236255b209e[m
+Merge: 63153eb4a efd9e8e49
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 28 13:57:10 2017 +0200
+
+    Merge pull request #1000 from crazyserver/MOBILE-2042
+    
+    MOBILE-2042 messages: Expect boolean on core_message_mark_all_message…
+
+[33mcommit a9e0ea2fa5de405cbba0e9b014cdb0a95758f4a7[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Apr 28 10:34:52 2017 +0200
+
+    MOBILE-2078 course: Add course actions to sections context menu
+
+[33mcommit f73300e2bebf14ac0e6b21d7ed250593db58afab[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Apr 26 16:49:32 2017 +0200
+
+    MOBILE-2078 competency: Style progressbar
+
+[33mcommit 07f72b562f41c138f95b3a1cc1d9fc46f77efa30[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Apr 21 12:29:39 2017 +0200
+
+    MOBILE-2078 overview: Basic courses view
+
+[33mcommit efd9e8e491e4506acf472bbf9dcb8899f825459f[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Apr 28 13:29:41 2017 +0200
+
+    MOBILE-2042 messages: Expect boolean on core_message_mark_all_messages_as_read
+
+[33mcommit 6ea67c96227586ee2016411633f778511b5be53d[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Apr 19 15:29:36 2017 +0200
+
+    MOBILE-2078 overview: Get events by time
+
+[33mcommit 6951af443f0212ccd1013be50095435b5034ba33[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Apr 19 09:58:28 2017 +0200
+
+    MOBILE-2078 overview: Add component and change my courses link
+
+[33mcommit 63153eb4aeedf24b7570fc049fd6c3d843b4acde[m
+Merge: 52c6db7cd 368a1a8f2
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 28 10:54:39 2017 +0200
+
+    Merge pull request #999 from magician03/MOBILE-2095
+    
+    MOBILE-2095 functions: modified sort() implementation
+
+[33mcommit 52c6db7cd09f512be4b22fe2f9ca4ce1ef7a9d9e[m
+Merge: 25ad01529 718046ffd
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Apr 25 14:15:46 2017 +0200
+
+    Merge pull request #997 from dpalou/MOBILE-2015
+    
+    Mobile 2015
+
+[33mcommit 368a1a8f2929437a700455f2615ae34d8775de50[m
+Author: magician03 <diwakar03121997@gmail.com>
+Date:   Mon Apr 24 21:41:15 2017 +0530
+
+    MOBILE-2095 functions: modified sort() implementation
+
+[33mcommit 718046ffd2d72e03c7dafed737c024250c8fc6c1[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Apr 10 16:25:24 2017 +0200
+
+    MOBILE-2015 lesson: Prioritize online mode in lesson player
+
+[33mcommit 33c100f6c5b994401413115ff049fcab248bfb2e[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Apr 10 13:45:17 2017 +0200
+
+    MOBILE-2015 lesson: Sync lesson when reaching EOL page
+
+[33mcommit b0b278d36351ffb92812d998ebb866b552d98a7d[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Apr 10 12:57:56 2017 +0200
+
+    MOBILE-2015 lesson: Implement lesson sync
+
+[33mcommit 60a4092c89d8ac6691a43365e1803fd7331eaeb7[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Apr 7 11:32:37 2017 +0200
+
+    MOBILE-2015 prefetch: Prevent outdate when creating data in prefetch
+
+[33mcommit 6ea74e2987aa24e88fc8133003eada89fd856169[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Apr 7 09:41:40 2017 +0200
+
+    MOBILE-2015 lesson: Support finish attempt in offline
+
+[33mcommit 848884eb1297e7a4b745fae6875b28e7199b71eb[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed Apr 5 13:57:37 2017 +0200
+
+    MOBILE-2015 lesson: Support last page seen in offline
+
+[33mcommit 6bb79e7c516c7fdc02f03ec67d6e77a4ad897fa5[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Apr 4 14:35:17 2017 +0200
+
+    MOBILE-2015 lesson: Support processPage in offline
+
+[33mcommit 06d0614811ffd3e9123d3ff1640e4e288ced43e2[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 31 10:46:15 2017 +0200
+
+    MOBILE-2015 lesson: Support prefetching lessons
+
+[33mcommit 9941e6b8c8291b4cd778ae361fdcead90d068d4b[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 31 09:45:41 2017 +0200
+
+    MOBILE-2015 prefetch: Don't force cache in isDownloadable
+
+[33mcommit 25ad01529bb09d794f0ac73d4327e4e8a6b59e4c[m
+Merge: ed47a68e2 26857ac30
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Apr 24 16:08:07 2017 +0200
+
+    Merge pull request #996 from dpalou/MOBILE-2060
+    
+    MOBILE-2060 contentlinks: Fix content links when the app is closed
+
+[33mcommit ed47a68e232fd5a4cd6e95bd395a1a231a9886c0[m
+Merge: 416bc6e4e 28dc03b8d
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Apr 24 16:06:42 2017 +0200
+
+    Merge pull request #995 from dpalou/MOBILE-2085
+    
+    MOBILE-2085 prefetch: Fix mark outdated in offline when it shouldn't
+
+[33mcommit 416bc6e4e693bc7cacdc377ed9bf7054b860142c[m
+Merge: 9814102b7 b166bd09b
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 21 16:12:19 2017 +0200
+
+    Merge pull request #994 from dpalou/MOBILE-2051
+    
+    MOBILE-2051 file: Fix open online files
+
+[33mcommit b166bd09b779fe1eec7886e90a613d4ab5adb848[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Apr 21 13:33:39 2017 +0200
+
+    MOBILE-2051 file: Fix open online files
+
+[33mcommit 9814102b7a63900ea35db7a48822c384d60b3c26[m
+Merge: 2502427fe caf7440a5
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 21 13:00:57 2017 +0200
+
+    Merge pull request #993 from dpalou/MOBILE-1157
+    
+    MOBILE-1157 course: Fix PTR in section with pages
+
+[33mcommit caf7440a570b3b62c1b0f5aa7b2016bc76e5044e[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Apr 21 10:24:42 2017 +0200
+
+    MOBILE-1157 course: Fix PTR in section with pages
+
+[33mcommit 2502427fe2f11c9eb4ac888292fb9065398b3582[m
+Merge: c6438c2ef 2cd8c3bce
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Apr 18 16:14:05 2017 +0200
+
+    Merge pull request #992 from crazyserver/MOBILE-2081
+    
+    MOBILE-2081 feedback: Refurbish feedback UI
+
+[33mcommit c6438c2efd937ec67f3bc06cd5b3c45e252c2dd5[m
+Merge: 65f55d09b 5c3105c81
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Apr 18 16:03:33 2017 +0200
+
+    Merge pull request #991 from crazyserver/MOBILE-2074
+    
+    MOBILE-2074 feedback: Implement Captcha challenge
+
+[33mcommit 65f55d09b7a19c9ce2a5b1b20ebbfd35c42328d7[m
+Merge: cfdc9aa13 b2b6a2b15
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Apr 18 13:19:03 2017 +0200
+
+    Merge pull request #990 from crazyserver/MOBILE-2009
+    
+    Mobile 2009
+
+[33mcommit cfdc9aa13ecef21e3211993055cd10eafdf850f9[m
+Merge: 818a6159b 49281a951
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Apr 18 12:21:16 2017 +0200
+
+    Merge pull request #989 from crazyserver/MOBILE-2004
+    
+    Mobile 2004
+
+[33mcommit 818a6159b406ce860a834303ae4bd9039d6d31f9[m
+Merge: 9c17b7da1 769eec8ed
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Apr 18 09:43:03 2017 +0100
+
+    Merge pull request #988 from crazyserver/MOBILE-2007
+    
+    Mobile 2007
+
+[33mcommit 2cd8c3bce6d31970129004213d6c28625b6a4e7c[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Apr 10 13:51:24 2017 +0200
+
+    MOBILE-2081 feedback: Refurbish feedback UI
+
+[33mcommit 5c3105c818f50a37ec519a25b8f78618e784f6d7[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Apr 10 12:53:22 2017 +0200
+
+    MOBILE-2074 feedback: Implement Captcha challenge
+
+[33mcommit 26857ac30cc11ce745f89b6d80335675becf6f98[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed Apr 12 15:56:32 2017 +0200
+
+    MOBILE-2060 contentlinks: Fix content links when the app is closed
+
+[33mcommit 28dc03b8d5f9320b8d74143e19b7a8e042d082c0[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Apr 11 12:31:27 2017 +0200
+
+    MOBILE-2085 prefetch: Fix mark outdated in offline when it shouldn't
+
+[33mcommit b2b6a2b15ee57aefbed1ca77e786c655c354a87b[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Apr 7 16:03:24 2017 +0200
+
+    MOBILE-2009 feedback: Go offline if a WS fails
+
+[33mcommit 1818a5518b3b9c01927725b480f879215f79f039[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Apr 5 14:17:56 2017 +0200
+
+    MOBILE-2009 feedback: Special sync cases
+
+[33mcommit 49281a95135dbd3d4f83e7d16aa64c9140cc4ee6[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Apr 3 11:19:09 2017 +0200
+
+    MOBILE-2004 feedback: Implement sync
+
+[33mcommit ecab6f683284365ec4d1633f3595dfc5f051ef4a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Apr 5 09:47:07 2017 +0200
+
+    MOBILE-2004 util: Execute ordered promises function
+
+[33mcommit 84fd604fa4eee4622b77cb54713421d4f5f37bf5[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Mar 31 11:35:27 2017 +0200
+
+    MOBILE-2004 feedback: Save offline responses
+
+[33mcommit 7e2b80f8ce091a191df9cf80beeae6551abeb6ce[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue Apr 4 10:32:41 2017 +0200
+
+    MOBILE-2004 feedback: Support check_updates_since module check
+
+[33mcommit 769eec8ed9023153de97e1bf0bd2227291e3cf4d[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Apr 10 10:40:07 2017 +0200
+
+    MOBILE-2007 feedback: Change capability checking
+
+[33mcommit a30cb625457842c07c1afd1d9498bcf9d7dc815c[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Mar 30 16:58:31 2017 +0200
+
+    MOBILE-2007 feedback: Register non respondents handler
+
+[33mcommit 5d2a68f2d2e55b52a4d8d57b7795ee7ad9f9b636[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Mar 30 16:52:40 2017 +0200
+
+    MOBILE-2007 feedback: Add non respondents list
+
+[33mcommit 9c17b7da135c591b53a181189a135048915818f0[m
+Merge: 52458eca5 8cbe043a6
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 18:20:36 2017 +0200
+
+    Merge pull request #987 from dpalou/MOBILE-2014
+    
+    Mobile 2014
+
+[33mcommit 52458eca586f87e4ed4acfbf7f4129864c18c735[m
+Merge: ff4fcbd31 e68fe6040
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 17:17:01 2017 +0200
+
+    Merge pull request #986 from crazyserver/MOBILE-2006
+    
+    Mobile 2006
+
+[33mcommit ff4fcbd318286c8b3f1e1705d49e244fdbc643c4[m
+Merge: 90855852a 1f43d8937
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 17:14:08 2017 +0200
+
+    Merge pull request #985 from dpalou/MOBILE-1883
+    
+    MOBILE-1883 forum: Allow pin discussions and refactor offline stores
+
+[33mcommit 1f43d89374459131fd9d2b787b61f99143abc07d[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Mar 28 11:19:29 2017 +0200
+
+    MOBILE-1883 forum: Allow pin discussions and refactor offline stores
+
+[33mcommit 90855852a36f5d4c16e3b254b597491fa63c2356[m
+Merge: 38c0e8855 ba56c4998
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 14:28:54 2017 +0200
+
+    Merge pull request #984 from crazyserver/MOBILE-2003
+    
+    Mobile 2003
+
+[33mcommit 38c0e8855da24d479b3053f31f74dd1d5659162e[m
+Merge: ca055718c f028409e4
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 12:45:23 2017 +0200
+
+    Merge pull request #983 from crazyserver/MOBILE-2005
+    
+    MOBILE-2005 feedback: Add analysis page
+
+[33mcommit ca055718c8ad9c6e007bed0fc8a9ee0e7c2af493[m
+Merge: fa3eaaf87 4eb32f767
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 11:57:55 2017 +0200
+
+    Merge pull request #982 from dpalou/MOBILE-1963
+    
+    MOBILE-1963 notif: Allow disabling sound in notifications
+
+[33mcommit 4eb32f767eed02d669c52d4b1bc436845b0c167c[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 24 13:44:04 2017 +0100
+
+    MOBILE-1963 notif: Allow disabling sound in notifications
+
+[33mcommit fa3eaaf874e71bb72e38170d0abd60e55cd40b3a[m
+Merge: a4b4fc1a6 931f9344e
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 11:47:46 2017 +0200
+
+    Merge pull request #981 from crazyserver/MOBILE-2002
+    
+    Mobile 2002
+
+[33mcommit a4b4fc1a620347d9b11a27ff6ad4c4ce4f3b9f41[m
+Merge: dcf29a1f5 52b5485dd
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 09:57:06 2017 +0200
+
+    Merge pull request #980 from crazyserver/MOBILE-1954
+    
+    MOBILE-1954 forum: Check forum istracked to treat unread posts
+
+[33mcommit dcf29a1f5e8b47aa8c805d43c5bb67432779175c[m
+Merge: 045418cd1 f1dff33a3
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 09:43:42 2017 +0200
+
+    Merge pull request #979 from crazyserver/MOBILE-2022
+    
+    Mobile 2022
+
+[33mcommit 045418cd147391bebdc22ce367b4dd885eb53a42[m
+Merge: c52cb1408 cec78c603
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 09:37:38 2017 +0200
+
+    Merge pull request #978 from crazyserver/MOBILE-2034
+    
+    MOBILE-2034 survey: Make radio buttons bigger
+
+[33mcommit c52cb14080ec6b7bc1e117771d27d79012c549fa[m
+Merge: 657e49857 4d8914f71
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 09:30:51 2017 +0200
+
+    Merge pull request #977 from crazyserver/MOBILE-2036
+    
+    MOBILE-2036 assign: Do not load mm-file directive twice
+
+[33mcommit 657e498575e6ec935477fdf08eebf4689d1a36c3[m
+Merge: 359ff833a 531720b58
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 09:25:27 2017 +0200
+
+    Merge pull request #976 from crazyserver/MOBILE-2037
+    
+    Mobile 2037
+
+[33mcommit 359ff833ae0ca361ccccdfc11bcf3d3ac9ba7e71[m
+Merge: 0137107fc abba198af
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 09:20:11 2017 +0200
+
+    Merge pull request #975 from magician03/MOBILE-1157-1
+    
+    MOBILE-1157 Modules: Enable mod desc in folder, resource, page, url
+
+[33mcommit 0137107fc16bce1d82d0a46ddf1dcd43978d46cb[m
+Merge: dc52e76dd d4c03d875
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Apr 7 09:16:07 2017 +0200
+
+    Merge pull request #974 from crazyserver/MOBILE-2042
+    
+    MOBILE-2042 messages: Mark all messages as read
+
+[33mcommit 531720b58bfb76ce21367bef8aadc1c186f7791d[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Mar 3 13:24:16 2017 +0100
+
+    MOBILE-2037 course: Support visibleoncoursepage module field
+
+[33mcommit 0fd6d194a19f22b7e1995d8277558dc0c8c69ed2[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Mar 3 13:23:12 2017 +0100
+
+    MOBILE-2037 sections: Support empty section names
+
+[33mcommit dc52e76ddfc29765f8c97b1640094b08257fde7a[m
+Merge: 8a03476ae eb98a189f
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 15:52:25 2017 +0200
+
+    Merge pull request #973 from dpalou/MOBILE-2056
+    
+    MOBILE-2056 choice: Don't show results if choice not open yet
+
+[33mcommit eb98a189fa5b152d487b5f6a735eb2041fd47a77[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Mar 14 15:52:44 2017 +0100
+
+    MOBILE-2056 choice: Don't show results if choice not open yet
+
+[33mcommit 8a03476ae06885897ae28f507161d85e0fc25b35[m
+Merge: 8d8b26c37 e5334160f
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 15:42:10 2017 +0200
+
+    Merge pull request #972 from dpalou/MOBILE-2072
+    
+    MOBILE-2072 login: Handle hash at the end of launch URL
+
+[33mcommit 8d8b26c37edd2198e1eaeb9772facebcd67f65d4[m
+Merge: 8e3122382 fabde24d5
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 15:39:32 2017 +0200
+
+    Merge pull request #971 from dpalou/MOBILE-2068
+    
+    MOBILE-2068 gulp: Fix remote addon packaging for Windows
+
+[33mcommit abba198afc8b27474a252f3b016b976be7a23cc9[m
+Author: magician03 <diwakar03121997@gmail.com>
+Date:   Fri Jan 27 21:46:28 2017 +0530
+
+    MOBILE-1157 Modules: Enable mod desc in folder, resource, page, url
+
+[33mcommit 8e31223822c09760b690d31ce56854ff37e75391[m
+Merge: 977ab60dd 736a90b11
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 15:28:50 2017 +0200
+
+    Merge pull request #970 from dpalou/MOBILE-2075
+    
+    MOBILE-2075 lang: Always use English as fallback language
+
+[33mcommit 977ab60dd67395c5f9eaaa9c9648a6cfe7281396[m
+Merge: 1c0556bea f01a89e62
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 15:26:18 2017 +0200
+
+    Merge pull request #969 from dpalou/MOBILE-2013
+    
+    Mobile 2013
+
+[33mcommit 1c0556bea1718f5eec2695d71ceed75e5361c229[m
+Merge: ff6eee55c a6523daf7
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 15:21:48 2017 +0200
+
+    Merge pull request #968 from dpalou/MOBILE-2032
+    
+    MOBILE-2032 question: Implement and use prepare answers function
+
+[33mcommit a6523daf7e53b0a7621f5a25878cf877692cfd76[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Mar 13 10:22:14 2017 +0100
+
+    MOBILE-2032 question: Implement and use prepare answers function
+
+[33mcommit ff6eee55ca42bfa6964ff35035e88f11798b2af4[m
+Merge: 1ed4fe17c 64e50f9dd
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 14:53:26 2017 +0200
+
+    Merge pull request #967 from dpalou/MOBILE-2012
+    
+    Mobile 2012
+
+[33mcommit 1ed4fe17cada3c14897e855c1ab395d7191f635d[m
+Merge: 9f7ae6960 5c84b46bc
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 14:20:06 2017 +0200
+
+    Merge pull request #966 from dpalou/MOBILE-2064
+    
+    MOBILE-2064 android: Force min and target SDK
+
+[33mcommit 9f7ae6960b42de8d0f988045aa1a8c654f5237c8[m
+Merge: 36268b3b1 085f433f1
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 11:38:41 2017 +0200
+
+    Merge pull request #965 from dpalou/MOBILE-2051
+    
+    MOBILE-2051 resource: Re-download the file even if it's big
+
+[33mcommit 36268b3b1f4f1b091fa5dc4367181e9d98e5ce73[m
+Merge: 185f5704b 7f87499ba
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 11:32:17 2017 +0200
+
+    Merge pull request #964 from dpalou/MOBILE-2011
+    
+    Mobile 2011
+
+[33mcommit 185f5704bf36f472458f240458ed09c00f20c2ee[m
+Merge: b5bc9c2c1 ff834370c
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Apr 5 11:29:31 2017 +0200
+
+    Merge pull request #963 from magician03/MOBILE-1789-1
+    
+    Mobile 1789 1
+
+[33mcommit 8cbe043a62de6e958b5caa7e93701b210d9e2490[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed Apr 5 08:46:32 2017 +0200
+
+    MOBILE-2014 lesson: Mark optional parameters in JSDoc
+
+[33mcommit ff834370cedcc66a60c21909ab1f8096dd80d5b1[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 10 12:17:49 2017 +0100
+
+    MOBILE-1789 messages: Deprecate isSearchEnabled and fix strings
+
+[33mcommit f853bf63b853943bba3c083253e7aac8f0b0c969[m
+Author: magician03 <diwakar03121997@gmail.com>
+Date:   Thu Feb 2 19:37:19 2017 +0530
+
+    MOBILE-1789 messages: search messages feature added
+    
+    Issue resolved.
+    Help needed to config translate for strings.
+
+[33mcommit b5bc9c2c163f6c426d3977da72524c90d659977b[m
+Merge: 169ecd145 403176e38
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Apr 3 09:14:39 2017 +0200
+
+    Merge pull request #960 from dpalou/MOBILE-2010
+    
+    Mobile 2010
+
+[33mcommit 169ecd1457b5b05c1fb0a035b67cb1726015439e[m
+Merge: ddf4e9ff5 f198d0a95
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Mar 31 16:49:15 2017 +0200
+
+    Merge pull request #959 from dpalou/MOBILE-1923
+    
+    MOBILE-1923 styles: Load remote styles in login screen
+
+[33mcommit ddf4e9ff5fd4f6ba98b8eb6b023ea0c5386e3cf2[m
+Merge: cb593b101 0f4dbc3e5
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Mar 31 16:35:35 2017 +0200
+
+    Merge pull request #958 from dpalou/MOBILE-1704
+    
+    MOBILE-1704 bower: More coherence in dependencies
+
+[33mcommit cb593b10109c74de379e18896e11564cb7ac51e3[m
+Merge: 8172ec5bf 85e223334
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Mar 31 16:31:48 2017 +0200
+
+    Merge pull request #957 from dpalou/MOBILE-1870
+    
+    Mobile 1870
+
+[33mcommit e68fe6040bea6119c0dc2d5d5e640b05907fd80a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Mar 29 17:36:44 2017 +0200
+
+    MOBILE-2006 feedback: Add links handler for show entries
+
+[33mcommit fe42a9dbc274cf3c6d8b774d4d2bcb960e042659[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue Mar 28 14:38:32 2017 +0200
+
+    MOBILE-2006 feedback: Show responses
+
+[33mcommit 0c892e03564652bffb4ff41759c2a514b775ebf9[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue Mar 28 14:38:03 2017 +0200
+
+    MOBILE-2006 feedback: Fix form refresh and leave
+
+[33mcommit 93dfcab656aec69c29e07ab24de1f4a77596f7e5[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Mar 30 08:31:16 2017 +0200
+
+    MOBILE-2006 splitview: Fix split view object watching
+
+[33mcommit c373d03bc8c08438bf7407aeed04bc527d9a6a90[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Mar 27 15:29:29 2017 +0200
+
+    MOBILE-2006 feedback: Add respondents attempts list
+
+[33mcommit ba56c49985afae27fa9c573bbae80add8401e9ef[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Mar 27 10:12:37 2017 +0200
+
+    MOBILE-2003 feedback: Register complete and print link handlers
+
+[33mcommit 236f4bac154bd5f40a42c99089bb14fd972acfb0[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Mar 23 16:44:50 2017 +0100
+
+    MOBILE-2003 feedback: Check for changes before leaving
+
+[33mcommit fa45c8104eaeaf0c278e8560a20fe4d1f5914dad[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Mar 23 15:33:32 2017 +0100
+
+    MOBILE-2003 feedback: Ignore cache on question form
+
+[33mcommit 75f30f0282902b4bfecf22445f3e25cb6502423a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue Mar 21 16:42:03 2017 +0100
+
+    MOBILE-2003 feedback: Submit the questions
+
+[33mcommit 60ed5fe5c93ac07222eab17a16ed1c3134a141e8[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Mar 20 17:21:55 2017 +0100
+
+    MOBILE-2003 feedback: Add dependency questions
+
+[33mcommit 1092a1d199bfead486e2800068c4a1c3e51a4f71[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Mar 20 15:15:13 2017 +0100
+
+    MOBILE-2003 feedback: Populate form with submitted values
+
+[33mcommit 0249afcc3f068bdda7e7c8e455304bcfc4fa190a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Mar 17 13:29:41 2017 +0100
+
+    MOBILE-2003 feedback: Process pages
+
+[33mcommit 4df3c635631074301d11fd3b71f19767ba1cd111[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Mar 16 15:34:58 2017 +0100
+
+    MOBILE-2003 feedback: Add preview
+
+[33mcommit 96b8cddbff17c3bcd8fc7f57ea21ae20c376c92e[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Mar 17 11:02:15 2017 +0100
+
+    MOBILE-2003 file: Use url field to fetch files
+
+[33mcommit 26eec19f87dc97d5e34a7c30ae86b0367415ad82[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Mar 15 15:23:46 2017 +0100
+
+    MOBILE-2003 feedback: Support question templates
+
+[33mcommit c17e9780771ae2633497dd40046dfc8368aace65[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Mar 10 14:01:07 2017 +0100
+
+    MOBILE-2003 feedback: Add question answer structure
+
+[33mcommit f028409e4a4e3c16bdf21557da202a7ec13639fe[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Mar 8 13:46:52 2017 +0100
+
+    MOBILE-2005 feedback: Add analysis page
+
+[33mcommit 931f9344e501519548fff6a5244af3d8a744c98a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Mar 8 14:47:44 2017 +0100
+
+    MOBILE-2002 feedback: Show page after submit
+
+[33mcommit 57c20568a8a6bdfa233f919e8a2f65620c9850c5[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 17 10:12:47 2017 +0100
+
+    MOBILE-2002 feedback: Add feedback basic structure
+
+[33mcommit 52b5485dd35ccbc9ea6b02b06cae1f34f4ac1c00[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Mar 6 11:49:50 2017 +0100
+
+    MOBILE-1954 forum: Check forum istracked to treat unread posts
+
+[33mcommit f1dff33a3db7220e3c5d4ae2f753e9064e3f8559[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Mar 6 12:58:56 2017 +0100
+
+    MOBILE-2022 file: Add more recognizable icons
+
+[33mcommit 4ce8213808396f7e96bf67e6ccf416097c856670[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Mar 6 10:27:25 2017 +0100
+
+    MOBILE-2022 files: Add missing file icons
+
+[33mcommit cec78c603324cfc5871891598f25bb0f8d826e34[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Mar 3 16:38:40 2017 +0100
+
+    MOBILE-2034 survey: Make radio buttons bigger
+
+[33mcommit 4d8914f71d2b764bb7a28678bff7ce7a1ebd3d14[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue Mar 7 09:56:23 2017 +0100
+
+    MOBILE-2036 assign: Do not load mm-file directive twice
+
+[33mcommit d4c03d875693e893bbf196c43e7f9e996dcae397[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Mar 6 15:20:47 2017 +0100
+
+    MOBILE-2042 messages: Mark all messages as read
+
+[33mcommit 5885f1bdf1a862ee9d6c50e6ced8852aecd9a72a[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Mar 27 10:07:28 2017 +0200
+
+    MOBILE-2014 lesson: Support review mode
+
+[33mcommit 8172ec5bf3c141e740aaa74202ecc54aad5029fd[m
+Merge: 1d148174e c95a3bb0d
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Mar 28 15:56:35 2017 +0200
+
+    Merge pull request #956 from crazyserver/MOBILE-2039
+    
+    MOBILE-2039 ux: Add message box styles
+
+[33mcommit c95a3bb0d124954689a5aea917dd454e1247c9e1[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Mar 2 17:21:52 2017 +0100
+
+    MOBILE-2039 ux: Add message box styles
+
+[33mcommit 1d148174e5fe8e05e220206e6d47dee1b59563c2[m
+Merge: 97bb648de 995a36cc6
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Mar 27 12:36:34 2017 +0200
+
+    Merge pull request #953 from dpalou/MOBILE-1796
+    
+    MOBILE-1796 core: Updated to NodeJS v6.9.1
+
+[33mcommit e5334160f0536327fd7cba5f9f890f524d2825b3[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 24 09:54:46 2017 +0100
+
+    MOBILE-2072 login: Handle hash at the end of launch URL
+
+[33mcommit fabde24d5e1c757aee489a99f0e5a6725d97e3c1[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Mar 23 15:47:03 2017 +0100
+
+    MOBILE-2068 gulp: Fix remote addon packaging for Windows
+
+[33mcommit f01a89e62bb5cd646ec5d367a0c976e44195ec1b[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Mar 23 15:24:35 2017 +0100
+
+    MOBILE-2013 lesson: Check for changes before leaving
+
+[33mcommit 736a90b11b0b86d0b7d3b5b47043f9d25f689f0c[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Mar 23 16:29:16 2017 +0100
+
+    MOBILE-2075 lang: Always use English as fallback language
+
+[33mcommit 7526ae6c43d659d0ffce04985f9e95bdfabbece5[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed Mar 22 13:53:07 2017 +0100
+
+    MOBILE-2013 lesson: Support all types of questions
+
+[33mcommit 70fed793a1873dab03f86cf8a176433a277d3f1d[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Mar 21 16:24:59 2017 +0100
+
+    MOBILE-2013 util: Support multiple levels in objectToArrayOfObjects
+
+[33mcommit 2b914748b9aa948a0feac40f4dca48283e4f717b[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Mar 21 11:44:49 2017 +0100
+
+    MOBILE-2013 lesson: Render and handle truefalse questions
+
+[33mcommit 64e50f9dd3e8f6d9a23b2a1f04a884e5667e3edf[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Mar 23 08:36:19 2017 +0100
+
+    MOBILE-2012 lesson: Use the new mod_lesson_get_lesson for password
+
+[33mcommit e731798aadd9f17dff58f326758b4dc0640115f0[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Mar 20 09:16:38 2017 +0100
+
+    MOBILE-2012 lesson: Support time limit
+
+[33mcommit 2da152327b253d9439335ba8bb5cb75801e927af[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 17 08:45:02 2017 +0100
+
+    MOBILE-2012 lesson: Initial implementation to support password
+
+[33mcommit 7f87499ba09a68770bc812610ec1065934611557[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 10 13:41:57 2017 +0100
+
+    MOBILE-2011 lesson: Display progressbar
+
+[33mcommit 8719ce29b67b11d80a52033b912535f20fe8acc4[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 10 12:02:05 2017 +0100
+
+    MOBILE-2011 lesson: Display ongoing score
+
+[33mcommit 821ef08d967d349c1b974d106970ff7c5c87ff69[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 10 11:27:37 2017 +0100
+
+    MOBILE-2011 lesson: Display next activity link
+
+[33mcommit 41db0c96482638b67c28651baabb3afe8ba17f9a[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 10 10:57:05 2017 +0100
+
+    MOBILE-2011 lesson: Support slideshow mode
+
+[33mcommit 8ccd60188f46285466fbd14fbb4ec6585f1bf222[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 10 10:14:45 2017 +0100
+
+    MOBILE-2011 lesson: Display media file
+
+[33mcommit 582ecb49761cff26aacf0f7baf29ad9814f9b27e[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Mar 9 17:04:01 2017 +0100
+
+    MOBILE-2011 lesson: Display lesson menu
+
+[33mcommit 403176e3858538769fcf95e821f512db3bea8166[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Mar 9 10:54:23 2017 +0100
+
+    MOBILE-2010 lesson: Call finish attempt and print EOL page
+
+[33mcommit 5e83b337352a2d271dc67cb961fee576f980cfd0[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Mar 7 12:05:35 2017 +0100
+
+    MOBILE-2010 lesson: Show buttons and allow navigating
+
+[33mcommit bad7d1ebb90896bb9b3daf15d436ee6ee4b1a321[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Mar 6 09:55:22 2017 +0100
+
+    MOBILE-2010 lesson: Render lesson first page
+
+[33mcommit be39e6543d87e2c5e3d60e6c4ac06342772d4f68[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Feb 21 13:51:38 2017 +0100
+
+    MOBILE-2010 lesson: Lesson initial implementation
+
+[33mcommit 5c84b46bc85f545cc9185095d91d047d7c93c328[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed Mar 15 12:01:11 2017 +0100
+
+    MOBILE-2064 android: Force min and target SDK
+
+[33mcommit 085f433f156988dabd1a99e8b9781ff4b37c6993[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Wed Mar 15 09:34:44 2017 +0100
+
+    MOBILE-2051 resource: Re-download the file even if it's big
+
+[33mcommit f198d0a956a3740929da30dcd6495955a1b671e3[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Mar 7 15:36:08 2017 +0100
+
+    MOBILE-1923 styles: Load remote styles in login screen
+
+[33mcommit 0f4dbc3e5f3b7cc281ffe55a52ec1a0f0cc20b28[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Mar 3 14:39:32 2017 +0100
+
+    MOBILE-1704 bower: More coherence in dependencies
+
+[33mcommit 85e2233342e65286081607bdac5f48c247c427a6[m
+Author: martinmine <martin_mine@hotmail.com>
+Date:   Tue Nov 8 16:19:51 2016 +0100
+
+    MOBILE-1870 Added npm commands
+
+[33mcommit bab7084f09194665a3454788e9c9b05b2ac1adb3[m
+Author: martinmine <martin_mine@hotmail.com>
+Date:   Thu Nov 10 16:36:38 2016 +0100
+
+    MOBILE-1877 core: Moved dependencies to devDependencies
+
+[33mcommit 995a36cc6ea6e415a1fb7f5f8cebc0a241cda38b[m
+Author: martinmine <martin_mine@hotmail.com>
+Date:   Thu Oct 20 15:03:41 2016 +0200
+
+    MOBILE-1796 core: Updated to NodeJS v6.9.1
+
+[33mcommit 97bb648de6dbc93926c93e5ac685accf26add0a6[m[33m ([m[1;33mtag: v3.2.1[m[33m)[m
+Merge: 9901e7647 d7a1b243c
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Feb 28 16:22:12 2017 +0100
+
+    Merge pull request #949 from dpalou/MOBILE-1987-pau
+    
+    MOBILE-1987 assign: Use real lastattempt on reopenned submissions
+
+[33mcommit d7a1b243cff9d9c0cde89e1ffa0615599c2302b9[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue Feb 28 14:39:00 2017 +0100
+
+    MOBILE-1987 assign: Use real lastattempt on reopenned submissions
+
+[33mcommit 9901e764744497070c774cbefe37619bc81c7925[m
+Merge: 7e891ceda 31055e993
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Feb 28 13:09:44 2017 +0100
+
+    Merge pull request #948 from dpalou/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit 31055e993e5eea6255df5b151bdab4e4078f0992[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Feb 28 12:45:51 2017 +0100
+
+    MOBILE-1987 assign: Allow editing file submissions in offline
+
+[33mcommit 7e891ceda2f0868db2ccdc12ce02f7473a43af7d[m
+Merge: 20c3fa212 36c76f27a
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Feb 28 12:39:54 2017 +0100
+
+    Merge pull request #947 from crazyserver/MOBILE-1987
+    
+    MOBILE-1987 assign: Recover draft from offline on feedback comments
+
+[33mcommit 31335b74fdad8448fdffa12b9647ce8eda047a09[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Feb 28 12:37:06 2017 +0100
+
+    MOBILE-1987 file: Show error only if user clicked file
+
+[33mcommit 36c76f27aa670a174a8c69423d069051dde97cdd[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue Feb 28 12:35:58 2017 +0100
+
+    MOBILE-1987 assign: Recover draft from offline on feedback comments
+
+[33mcommit e1488d16212037cb776e6b9d020bfbbbb5d5eff6[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Tue Feb 28 12:07:07 2017 +0100
+
+    MOBILE-1987 filepool: Improve getFileStateByUrl
+    If a file was being downloaded using downloadUrl, the state returned was "notdownloaded"
+
+[33mcommit 20c3fa212fca2405562c91da1989ac46adcacc84[m
+Merge: 36fa03f4e 56501a823
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Tue Feb 28 10:05:50 2017 +0100
+
+    Merge pull request #946 from crazyserver/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit 56501a8238f09ae2601a3ec5f6aa6729c3f4e8ff[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Tue Feb 28 08:50:10 2017 +0100
+
+    MOBILE-1987 assign: Get participants by group
+
+[33mcommit 5fa9f438c521e4388b42633d0ecedfb72665689c[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Feb 27 17:19:54 2017 +0100
+
+    MOBILE-1987 assign: Do not show numbers when it uses groups
+
+[33mcommit 36fa03f4e932863ce63e7c101303eb0005f0977f[m
+Merge: 0a029f951 a69eb852c
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 17:16:24 2017 +0100
+
+    Merge pull request #945 from crazyserver/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit 0a029f951aa21deaf7b692685690d6fc8c50c6e1[m
+Merge: 5f890994e 8e0efc677
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 17:15:55 2017 +0100
+
+    Merge pull request #944 from dpalou/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit 8e0efc677e55c9f45b1f35d1613a435c175db0a8[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Feb 27 17:04:26 2017 +0100
+
+    MOBILE-1987 assign: Block assign only if grading or editing
+
+[33mcommit 8b431fb1244026e4338f871101da92d874db67f5[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Feb 27 16:56:56 2017 +0100
+
+    MOBILE-1987 assign: Fix hasAssignOfflineData
+
+[33mcommit 79ea974a42f5300d196398a82d8cac75982bb844[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Feb 27 16:36:18 2017 +0100
+
+    MOBILE-1987 assign: Don't show Add attempt if offline submission
+
+[33mcommit d9678e97e49949fb24dfe0daeb549d96fb487d2a[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Feb 27 16:35:53 2017 +0100
+
+    MOBILE-1987 assign: Allow offline attachments if reopened
+
+[33mcommit a69eb852c70e68d0ef61dacd6d095216236d88a7[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Feb 27 16:18:56 2017 +0100
+
+    MOBILE-1987 rte: Add min height to RTE and textarea
+
+[33mcommit 0b45205e61666467c5f3e75355af2e77cc69f6a9[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Feb 27 14:34:11 2017 +0100
+
+    MOBILE-1987 scorm: Fix prefetch when not downloaded
+
+[33mcommit 5f890994e7c141dd2710934d75c17e4e471cde59[m
+Merge: cdb0bdba8 19025973b
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 14:43:38 2017 +0100
+
+    Merge pull request #943 from jleyva/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit 19025973b31bf2a9321a8e535ab09c8c102e7f10[m[33m ([m[1;31morigin/MOBILE-1987[m[33m)[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 14:42:38 2017 +0100
+
+    MOBILE-1987 release: Bump version numbers
+
+[33mcommit 64209724e50468482ea35883d72c6736d9b154fd[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 14:41:04 2017 +0100
+
+    MOBILE-1987 release: Sync with AMOS, small packages
+
+[33mcommit 7d9f74e3ba8c2d8b06f82e152081db5e1c99bb08[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 14:23:49 2017 +0100
+
+    MOBILE-1987 release: Sync with AMOS, 70 days ago
+
+[33mcommit 464b23b99e7d9dc07274dc2b52d3c1806b72155b[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 14:21:37 2017 +0100
+
+    MOBILE-1987 release: Auto translated strings after gulp
+
+[33mcommit a23ebed5a41676b2bf027c7846e3d2b4d6cb39a5[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 14:19:44 2017 +0100
+
+    MOBILE-1987 release: Auto translated strings
+
+[33mcommit cdb0bdba8d8e1c878dde102b306ccbd51e917fe6[m
+Merge: be76b3d95 56fef0211
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 13:49:05 2017 +0100
+
+    Merge pull request #942 from moodlehq/integration
+    
+    Integration
+
+[33mcommit 4dbf77f97ce7d3fe77af7f90536138aa0fbb1102[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Feb 27 13:16:50 2017 +0100
+
+    MOBILE-1987 text: Replace new lines only if no HTML
+
+[33mcommit 56fef0211e22a66ab31cc5caf8cfcc9f8ed8d203[m
+Merge: 957c1a729 824e5f27d
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 12:17:30 2017 +0100
+
+    Merge pull request #941 from crazyserver/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit 824e5f27d3aa170002edf001eda66119e18b9dd0[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Feb 27 12:11:49 2017 +0100
+
+    MOBILE-1987 wiki: Sort wiki map
+
+[33mcommit 957c1a7291a4fcdf2d9d887cee69b30a8c190632[m
+Merge: 4b749a1c8 b23ff70d6
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Mon Feb 27 12:09:19 2017 +0100
+
+    Merge pull request #940 from dpalou/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit b23ff70d6acf306e9a6f1c65231323c856181161[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Feb 27 12:01:58 2017 +0100
+
+    MOBILE-1987 assign: Fix Invalid date and bad button text
+
+[33mcommit e60c54fefedc1db35535a678e0103abdca425758[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Mon Feb 27 11:22:48 2017 +0100
+
+    MOBILE-1987 glossary: Check timecreated when getting offline files
+
+[33mcommit 232e331b4efdc13ebcedc7aa3fca3b8e1196283a[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Feb 27 10:16:38 2017 +0100
+
+    MOBILE-1987 scorm: Fix fieldName variable not found
+
+[33mcommit 363c2d7abb437595570e3916ab7c6b7031aa3e7f[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 17:03:06 2017 +0100
+
+    MOBILE-1987 choice: Fix warning twice
+
+[33mcommit 4ea88d57a7a88401003c4f5c8c47301eff534a15[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 16:16:17 2017 +0100
+
+    MOBILE-1987 assign: Fix uploading offline files error
+
+[33mcommit b01f619f48ded1a99b6ffda5cb5c0a3fe5e58622[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 16:16:53 2017 +0100
+
+    MOBILE-1987 utils: Add icons to error messages
+
+[33mcommit 2cdb1715febb383982f4caa76a14d8b44da9357d[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 14:41:56 2017 +0100
+
+    MOBILE-1987 forum: Add top border to attachments form
+
+[33mcommit 6321c0fde07c62d68e617ebf96b3f88c822e40f0[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Mon Feb 27 08:53:44 2017 +0100
+
+    MOBILE-1987 forum: Prevent error undefined forum object
+
+[33mcommit 5011132bf5aed9b71ed053771e34622c435a56d4[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Feb 24 15:37:13 2017 +0100
+
+    MOBILE-1987 text: Format HTML if RTE disabled
+
+[33mcommit 4b749a1c8166b645f8cfb12d2adc5c9b6e392faf[m
+Merge: 77f2c2164 b1bbb99ff
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Feb 24 12:41:05 2017 +0100
+
+    Merge pull request #938 from dpalou/MOBILE-1987
+    
+    MOBILE-1987 login: Show error if logged out and offline
+
+[33mcommit 77f2c21646ccc274850452416c10107c93f1205a[m
+Merge: 5b3bf5205 f145cdd8b
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Feb 24 12:40:59 2017 +0100
+
+    Merge pull request #937 from crazyserver/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit f145cdd8b78a5684e2dfc8c07f01738df33f0f68[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 12:38:58 2017 +0100
+
+    MOBILE-1987 forum: Enlarge form content
+
+[33mcommit 532d3c1735a89d4844f5ebd79c962faad7abeefd[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 12:24:52 2017 +0100
+
+    MOBILE-1987 chat: Better looking chat users modal
+
+[33mcommit 0a45d57f94fdfb1ebebbd1dfba3c7d901a075521[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 11:18:31 2017 +0100
+
+    MOBILE-1987 survey: more space to answers
+
+[33mcommit 5c503ea09803b9637781844fd7cbf9b44b5398f0[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 11:00:17 2017 +0100
+
+    MOBILE-1987 quiz: Fix styling match questions
+
+[33mcommit 2c59a8bc4cf84ac2466cb8631be6ab4a3ddbca28[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 09:10:06 2017 +0100
+
+    MOBILE-1987 assign: getSubmissionGradingStatusTranslationId not found
+
+[33mcommit f61412d787533116a117eeac9c266696901637fd[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Fri Feb 24 09:09:44 2017 +0100
+
+    MOBILE-1987 css: Fallback on flex columns
+
+[33mcommit b1bbb99ff9dc926550b29030cbb56a18c93e3aed[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Fri Feb 24 11:26:57 2017 +0100
+
+    MOBILE-1987 login: Show error if logged out and offline
+
+[33mcommit 5b3bf5205a1191c5fe796aa5e60addd67c3fb094[m
+Merge: ac6a2671d 010c26d40
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Fri Feb 24 11:16:43 2017 +0100
+
+    Merge pull request #936 from dpalou/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit 010c26d4058fae6778a5943094d22b569f5a8584[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Feb 23 16:55:45 2017 +0100
+
+    MOBILE-1987 filepool: Notify file deleted, outdated and downloading
+
+[33mcommit ac6a2671ddd77355d074adc466c76c39f1010424[m
+Merge: 59f8e58a4 773d86740
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 16:34:01 2017 +0100
+
+    Merge pull request #935 from crazyserver/MOBILE-1987
+    
+    MOBILE-1987 completion: Solve completion updating
+
+[33mcommit 773d86740ba668d4d8b1b79c36eecfd42baf6f11[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Feb 23 16:19:12 2017 +0100
+
+    MOBILE-1987 completion: Solve completion updating
+
+[33mcommit eed76bafae33d66667fe540084b28bff7c25e381[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Feb 23 16:02:29 2017 +0100
+
+    MOBILE-1987 enrol: Poll enrolled courses after self enrol
+
+[33mcommit 79eb998d0f387efe88dc24dcb0145a6faa98d6cb[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Feb 23 12:34:24 2017 +0100
+
+    MOBILE-1987 guest: Fix addons shown in guest courses
+
+[33mcommit 59f8e58a4cd186b11895ac639f0fff2bb990de72[m
+Merge: 82cc19fec a30dacde1
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 15:25:57 2017 +0100
+
+    Merge pull request #934 from crazyserver/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit a30dacde1a6497e3e57de5b06019fae2f52f191d[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Feb 23 13:56:38 2017 +0100
+
+    MOBILE-1987 glossary: Check the duplicate is not the one we are editing
+
+[33mcommit 82cc19fec44b6ffae40f8c9a6d61eaa174503d9f[m
+Merge: 3ba43c961 572771fbe
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 12:45:44 2017 +0100
+
+    Merge pull request #933 from jleyva/MOBILE-1987
+    
+    MOBILE-1987 language: Fix emoji string (suggested by Helen)
+
+[33mcommit 572771fbe35007dea5a38bf728d3836abc5cbe52[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 12:45:04 2017 +0100
+
+    MOBILE-1987 language: Fix emoji string (suggested by Helen)
+
+[33mcommit 9430c060d030a827e10f63715474af7ecc2e5a7a[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Feb 23 12:35:07 2017 +0100
+
+    MOBILE-1987 folder: Fix file download size confirm
+
+[33mcommit abb361af47de6d75812935700dfed732ff802520[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Feb 23 11:44:23 2017 +0100
+
+    MOBILE-1987 popup: Style big popups
+
+[33mcommit 3ba43c9618650b5b1abc5f713030ad99366db906[m
+Merge: fb915fd0c 9565b5e83
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 11:04:21 2017 +0100
+
+    Merge pull request #932 from dpalou/MOBILE-1987
+    
+    MOBILE-1987 formattext: Show content if watch variable not found
+
+[33mcommit fb915fd0c4c4dc1508a4c2e2bc4322c62b596688[m
+Merge: 88e95e82e d8d01ce6a
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 11:03:02 2017 +0100
+
+    Merge pull request #931 from crazyserver/MOBILE-1966-2
+    
+    Mobile 1966 2
+
+[33mcommit 88e95e82ea84755cf3aa61ab5c3d3e3270a28ef7[m
+Merge: 1f3a543ce d2405c6b4
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 11:02:06 2017 +0100
+
+    Merge pull request #930 from crazyserver/MOBILE-1988-2
+    
+    MOBILE-1988 rte: Fix restore initial height on textarea
+
+[33mcommit 9565b5e833ab1380a347220e1c6934486c221617[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Feb 23 10:54:16 2017 +0100
+
+    MOBILE-1987 formattext: Show content if watch variable not found
+
+[33mcommit d2405c6b43cf54310a20c219e355fc09f6a02a40[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Feb 23 10:22:49 2017 +0100
+
+    MOBILE-1988 rte: Fix restore initial height on textarea
+
+[33mcommit 1f3a543ce23fa1552e3939135aab70d91de1c029[m
+Merge: bfb2a0cfa ff3b9a4ad
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 09:47:53 2017 +0100
+
+    Merge pull request #929 from dpalou/MOBILE-2029
+    
+    MOBILE-2029 forum: Remove unused string flatposts
+
+[33mcommit ff3b9a4ade42baea5276c7a30508e94c799e97ab[m
+Author: Dani Palou <dani@moodle.com>
+Date:   Thu Feb 23 09:46:16 2017 +0100
+
+    MOBILE-2029 forum: Remove unused string flatposts
+
+[33mcommit bfb2a0cfa8f86b5b9af4745b132ecf435c52f97f[m
+Merge: 7977a2ccb 538643471
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Thu Feb 23 09:39:24 2017 +0100
+
+    Merge pull request #928 from crazyserver/MOBILE-1902-2
+    
+    MOBILE-1902 wiki: Invalidate subwikis if one is created
+
+[33mcommit d8d01ce6afa48c873ccc3a2dc7e03a61a538bed6[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Thu Feb 23 08:58:20 2017 +0100
+
+    MOBILE-1966 glossary: Discard entries just before saving new one
+
+[33mcommit 7977a2ccbc086c78936d98d172dfe2286afa02bf[m
+Merge: 94e6deb25 227cd8310
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Feb 22 20:25:43 2017 +0100
+
+    Merge pull request #927 from jleyva/MOBILE-1987
+    
+    Mobile 1987
+
+[33mcommit 227cd831045bbea09c42ff6bbc24831c6b10e5e3[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Feb 22 20:24:49 2017 +0100
+
+    MOBILE-1987 language: Fix existing string
+
+[33mcommit 618acd14a38143db74e83c00f484935d9ffca0ba[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Feb 22 20:22:12 2017 +0100
+
+    MOBILE-1987 language: Run auto-translation script
+
+[33mcommit 76df60469f3012efceea2c9c9f7f803a6c84fd2f[m
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Feb 22 20:09:47 2017 +0100
+
+    MOBILE-1987 language: Fix separators
+
+[33mcommit 94e6deb2520c6a98189c183df92ab70fdc4ab404[m
+Merge: 570b039d6 cbc7ffa31
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Feb 22 18:11:01 2017 +0100
+
+    Merge pull request #926 from dpalou/MOBILE-2029
+    
+    MOBILE-2029 forum: Improve sorting options strings
+
+[33mcommit 570b039d65b769dfb8b58646ae2bd3e2fced1d4c[m
+Merge: 0c0b952c9 04b4452ad
+Author: Juan Leyva <juanleyvadelgado@gmail.com>
+Date:   Wed Feb 22 18:06:29 2017 +0100
+
+    Merge pull request #925 from dpalou/MOBILE-2027
+    
+    MOBILE-2027 ui: Disable action if loading modal open
+
+[33mcommit d2de7e23e268b8aac58cff41274ad7e4f9f7abd1[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Feb 22 17:02:12 2017 +0100
+
+    MOBILE-1966 glossary: Performance improvements on cache invalidation
+
+[33mcommit 8f529eaad725dc96082d1854b82e8a21df5bce50[m
+Author: Pau Ferrer Ocaña <crazyserver@gmail.com>
+Date:   Wed Feb 22 15:41:59 2017 +0100
+
+    MOBILE-1966 glossary: Check duplicate entries
