@@ -115,7 +115,7 @@ import { AddonBlockGlossaryRandomModule } from '@addon/block/glossaryrandom/glos
 import { AddonBlockHtmlModule } from '@addon/block/html/html.module';
 import { AddonBlockMyOverviewModule } from '@addon/block/myoverview/myoverview.module';
 import { AddonBlockNewsItemsModule } from '@addon/block/newsitems/newsitems.module';
-import { AddonBlockOnlineUsersModule } from '@addon/block/onlineusers/onlineusers.module';
+
 import { AddonBlockLearningPlansModule } from '@addon/block/learningplans/learningplans.module';
 import { AddonBlockPrivateFilesModule } from '@addon/block/privatefiles/privatefiles.module';
 import { AddonBlockSiteMainMenuModule } from '@addon/block/sitemainmenu/sitemainmenu.module';
@@ -269,7 +269,7 @@ export const WP_PROVIDER: any = null;
         AddonBlockLearningPlansModule,
         AddonBlockMyOverviewModule,
         AddonBlockNewsItemsModule,
-        //AddonBlockOnlineUsersModule,
+
         AddonBlockPrivateFilesModule,
         AddonBlockSiteMainMenuModule,
         AddonBlockTimelineModule,

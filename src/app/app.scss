@@ -1059,7 +1059,7 @@ ion-app.app-root {
     display: flex;
     flex-flow: nowrap;
     overflow-x: scroll;
-    flex-direction: row;
+    flex-direction: column;
 
     .item-ios.item-block {
       @include padding-horizontal($item-ios-padding-end / 2, null);
