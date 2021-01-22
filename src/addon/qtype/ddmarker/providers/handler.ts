@@ -1,5 +1,5 @@
 
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 import { Injectable, Injector } from '@angular/core';
 import { CoreQuestionProvider } from '@core/question/providers/question';
 import { CoreQuestionHandler } from '@core/question/providers/delegate';
+import { CoreQuestionHelperProvider } from '@core/question/providers/helper';
 import { AddonQtypeDdMarkerComponent } from '../component/ddmarker';
+import { CoreWSExternalFile } from '@providers/ws';
 
 /**
  * Handler to support drag-and-drop markers question type.
@@ -26,15 +28,15 @@ export class AddonQtypeDdMarkerHandler implements CoreQuestionHandler {
     name = 'AddonQtypeDdMarker';
     type = 'qtype_ddmarker';
 
-    constructor(private questionProvider: CoreQuestionProvider) { }
+    constructor(private questionProvider: CoreQuestionProvider, private questionHelper: CoreQuestionHelperProvider) { }
 
     /**
      * Return the name of the behaviour to use for the question.
      * If the question should use the default behaviour you shouldn't implement this function.
      *
-     * @param {any} question The question.
-     * @param {string} behaviour The default behaviour.
-     * @return {string} The behaviour to use.
+     * @param question The question.
+     * @param behaviour The default behaviour.
+     * @return The behaviour to use.
      */
     getBehaviour(question: any, behaviour: string): string {
         if (behaviour === 'interactive') {
@@ -48,9 +50,9 @@ export class AddonQtypeDdMarkerHandler implements CoreQuestionHandler {
      * Return the Component to use to display the question.
      * It's recommended to return the class of the component, but you can also return an instance of the component.
      *
-     * @param {Injector} injector Injector.
-     * @param {any} question The question to render.
-     * @return {any|Promise<any>} The component (or promise resolved with component) to use, undefined if not found.
+     * @param injector Injector.
+     * @param question The question to render.
+     * @return The component (or promise resolved with component) to use, undefined if not found.
      */
     getComponent(injector: Injector, question: any): any | Promise<any> {
         return AddonQtypeDdMarkerComponent;
@@ -59,11 +61,13 @@ export class AddonQtypeDdMarkerHandler implements CoreQuestionHandler {
     /**
      * Check if a response is complete.
      *
-     * @param {any} question The question.
-     * @param {any} answers Object with the question answers (without prefix).
-     * @return {number} 1 if complete, 0 if not complete, -1 if cannot determine.
+     * @param question The question.
+     * @param answers Object with the question answers (without prefix).
+     * @param component The component the question is related to.
+     * @param componentId Component ID.
+     * @return 1 if complete, 0 if not complete, -1 if cannot determine.
      */
-    isCompleteResponse(question: any, answers: any): number {
+    isCompleteResponse(question: any, answers: any, component: string, componentId: string | number): number {
         // If 1 dragitem is set we assume the answer is complete (like Moodle does).
         for (const name in answers) {
             if (answers[name]) {
@@ -77,7 +81,7 @@ export class AddonQtypeDdMarkerHandler implements CoreQuestionHandler {
     /**
      * Whether or not the handler is enabled on a site level.
      *
-     * @return {boolean|Promise<boolean>} True or promise resolved with true if enabled.
+     * @return True or promise resolved with true if enabled.
      */
     isEnabled(): boolean | Promise<boolean> {
         return true;
@@ -87,23 +91,45 @@ export class AddonQtypeDdMarkerHandler implements CoreQuestionHandler {
      * Check if a student has provided enough of an answer for the question to be graded automatically,
      * or whether it must be considered aborted.
      *
-     * @param {any} question The question.
-     * @param {any} answers Object with the question answers (without prefix).
-     * @return {number} 1 if gradable, 0 if not gradable, -1 if cannot determine.
+     * @param question The question.
+     * @param answers Object with the question answers (without prefix).
+     * @param component The component the question is related to.
+     * @param componentId Component ID.
+     * @return 1 if gradable, 0 if not gradable, -1 if cannot determine.
      */
-    isGradableResponse(question: any, answers: any): number {
-        return this.isCompleteResponse(question, answers);
+    isGradableResponse(question: any, answers: any, component: string, componentId: string | number): number {
+        return this.isCompleteResponse(question, answers, component, componentId);
     }
 
     /**
      * Check if two responses are the same.
      *
-     * @param {any} question Question.
-     * @param {any} prevAnswers Object with the previous question answers.
-     * @param {any} newAnswers Object with the new question answers.
-     * @return {boolean} Whether they're the same.
+     * @param question Question.
+     * @param prevAnswers Object with the previous question answers.
+     * @param newAnswers Object with the new question answers.
+     * @param component The component the question is related to.
+     * @param componentId Component ID.
+     * @return Whether they're the same.
      */
-    isSameResponse(question: any, prevAnswers: any, newAnswers: any): boolean {
+    isSameResponse(question: any, prevAnswers: any, newAnswers: any, component: string, componentId: string | number): boolean {
         return this.questionProvider.compareAllAnswers(prevAnswers, newAnswers);
+    }
+
+    /**
+     * Get the list of files that needs to be downloaded in addition to the files embedded in the HTML.
+     *
+     * @param question Question.
+     * @param usageId Usage ID.
+     * @return List of files or URLs.
+     */
+    getAdditionalDownloadableFiles(question: any, usageId: number): (string | CoreWSExternalFile)[] {
+        this.questionHelper.extractQuestionScripts(question, usageId);
+
+        if (question.amdArgs && typeof question.amdArgs[1] == 'string') {
+            // Moodle 3.6+.
+            return [question.amdArgs[1]];
+        }
+
+        return [];
     }
 }

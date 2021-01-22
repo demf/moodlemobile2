@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,9 +31,11 @@ export class CoreSiteHomeIndexPage {
 
     constructor(navParams: NavParams, navCtrl: NavController, courseHelper: CoreCourseHelperProvider,
             sitesProvider: CoreSitesProvider) {
-        const module = navParams.get('module');
+        const module = navParams.get('module'),
+            modParams = navParams.get('modParams');
+
         if (module) {
-            courseHelper.openModule(navCtrl, module, sitesProvider.getCurrentSite().getSiteHomeId());
+            courseHelper.openModule(navCtrl, module, sitesProvider.getCurrentSite().getSiteHomeId(), undefined, modParams);
         }
     }
 }

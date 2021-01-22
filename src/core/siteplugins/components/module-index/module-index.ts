@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,11 +15,13 @@
 import { Component, OnInit, OnDestroy, Input, ViewChild } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
+import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreSitePluginsProvider } from '../../providers/siteplugins';
-import { CoreCourseModuleMainComponent } from '@core/course/providers/module-delegate';
+import { CoreCourseModuleDelegate, CoreCourseModuleMainComponent } from '@core/course/providers/module-delegate';
 import { CoreCourseModulePrefetchDelegate } from '@core/course/providers/module-prefetch-delegate';
 import { CoreCourseHelperProvider } from '@core/course/providers/helper';
 import { CoreSitePluginsPluginContentComponent } from '../plugin-content/plugin-content';
+import { CoreSiteWSPreSets } from '@classes/site';
 
 /**
  * Component that displays the index of a module site plugin.
@@ -31,6 +33,7 @@ import { CoreSitePluginsPluginContentComponent } from '../plugin-content/plugin-
 export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, CoreCourseModuleMainComponent {
     @Input() module: any; // The module.
     @Input() courseId: number; // Course ID the module belongs to.
+    @Input() pageTitle: string; // Current page title. It can be used by the "new-content" directives.
 
     @ViewChild(CoreSitePluginsPluginContentComponent) content: CoreSitePluginsPluginContentComponent;
 
@@ -38,6 +41,7 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
     method: string;
     args: any;
     initResult: any;
+    preSets: CoreSiteWSPreSets;
 
     // Data for context menu.
     externalUrl: string;
@@ -46,6 +50,13 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
     prefetchStatusIcon: string;
     prefetchText: string;
     size: string;
+    displayOpenInBrowser = true;
+    displayDescription = true;
+    displayRefresh = true;
+    displayPrefetch = true;
+    displaySize = true;
+    ptrEnabled = true;
+
     jsData: any; // Data to pass to the component.
 
     protected isDestroyed = false;
@@ -53,7 +64,8 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
 
     constructor(protected sitePluginsProvider: CoreSitePluginsProvider, protected courseHelper: CoreCourseHelperProvider,
             protected prefetchDelegate: CoreCourseModulePrefetchDelegate, protected textUtils: CoreTextUtilsProvider,
-            protected translate: TranslateService) { }
+            protected translate: TranslateService, protected utils: CoreUtilsProvider,
+            protected moduleDelegate: CoreCourseModuleDelegate) { }
 
     /**
      * Component being initialized.
@@ -62,9 +74,12 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
         this.refreshIcon = 'spinner';
 
         if (this.module) {
-            const handler = this.sitePluginsProvider.getSitePluginHandler(this.module.modname);
+            const handlerName = this.moduleDelegate.getHandlerName(this.module.modname),
+                handler = this.sitePluginsProvider.getSitePluginHandler(handlerName);
+
             if (handler) {
                 this.component = handler.plugin.component;
+                this.preSets = {componentId: this.module.id};
                 this.method = handler.handlerSchema.method;
                 this.args = {
                     courseid: this.courseId,
@@ -75,6 +90,13 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
                     module: this.module,
                     courseId: this.courseId
                 };
+
+                this.displayOpenInBrowser = !this.utils.isFalseOrZero(handler.handlerSchema.displayopeninbrowser);
+                this.displayDescription = !this.utils.isFalseOrZero(handler.handlerSchema.displaydescription);
+                this.displayRefresh = !this.utils.isFalseOrZero(handler.handlerSchema.displayrefresh);
+                this.displayPrefetch = !this.utils.isFalseOrZero(handler.handlerSchema.displayprefetch);
+                this.displaySize = !this.utils.isFalseOrZero(handler.handlerSchema.displaysize);
+                this.ptrEnabled = !this.utils.isFalseOrZero(handler.handlerSchema.ptrenabled);
             }
 
             // Get the data for the context menu.
@@ -86,9 +108,9 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
     /**
      * Refresh the data.
      *
-     * @param {any} [refresher] Refresher.
-     * @param {Function} [done] Function to call when done.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param refresher Refresher.
+     * @param done Function to call when done.
+     * @return Promise resolved when done.
      */
     doRefresh(refresher?: any, done?: () => void): Promise<any> {
         if (this.content) {
@@ -129,7 +151,14 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
      * Expand the description.
      */
     expandDescription(): void {
-        this.textUtils.expandText(this.translate.instant('core.description'), this.description, this.component, this.module.id);
+        this.textUtils.viewText(this.translate.instant('core.description'), this.description, {
+            component: this.component,
+            componentId: this.module.id,
+            filter: true,
+            contextLevel: 'module',
+            instanceId: this.module.id,
+            courseId: this.courseId,
+        });
     }
 
     /**
@@ -152,5 +181,16 @@ export class CoreSitePluginsModuleIndexComponent implements OnInit, OnDestroy, C
     ngOnDestroy(): void {
         this.isDestroyed = true;
         this.statusObserver && this.statusObserver.off();
+    }
+
+    /**
+     * Call a certain function on the component instance.
+     *
+     * @param name Name of the function to call.
+     * @param params List of params to send to the function.
+     * @return Result of the call. Undefined if no component instance or the function doesn't exist.
+     */
+    callComponentFunction(name: string, params?: any[]): any {
+        return this.content.callComponentFunction(name, params);
     }
 }

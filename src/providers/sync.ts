@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
 
 import { Injectable } from '@angular/core';
 import { CoreEventsProvider } from './events';
-import { CoreSitesProvider } from './sites';
+import { CoreSitesProvider, CoreSiteSchema } from './sites';
+import { makeSingleton } from '@singletons/core.singletons';
 
 /*
  * Service that provides some features regarding synchronization.
@@ -24,36 +25,42 @@ export class CoreSyncProvider {
 
     // Variables for the database.
     protected SYNC_TABLE = 'sync';
-    protected tableSchema = {
-        name: this.SYNC_TABLE,
-        columns: [
+    protected siteSchema: CoreSiteSchema = {
+        name: 'CoreSyncProvider',
+        version: 1,
+        tables: [
             {
-                name: 'component',
-                type: 'TEXT',
-                notNull: true
-            },
-            {
-                name: 'id',
-                type: 'TEXT',
-                notNull: true
-            },
-            {
-                name: 'time',
-                type: 'INTEGER'
-            },
-            {
-                name: 'warnings',
-                type: 'TEXT'
+                name: this.SYNC_TABLE,
+                columns: [
+                    {
+                        name: 'component',
+                        type: 'TEXT',
+                        notNull: true
+                    },
+                    {
+                        name: 'id',
+                        type: 'TEXT',
+                        notNull: true
+                    },
+                    {
+                        name: 'time',
+                        type: 'INTEGER'
+                    },
+                    {
+                        name: 'warnings',
+                        type: 'TEXT'
+                    }
+                ],
+                primaryKeys: ['component', 'id']
             }
-        ],
-        primaryKeys: ['component', 'id']
+        ]
     };
 
     // Store blocked sync objects.
     protected blockedItems: { [siteId: string]: { [blockId: string]: { [operation: string]: boolean } } } = {};
 
     constructor(eventsProvider: CoreEventsProvider, private sitesProvider: CoreSitesProvider) {
-        this.sitesProvider.createTableFromSchema(this.tableSchema);
+        this.sitesProvider.registerSiteSchema(this.siteSchema);
 
         // Unblock all blocks on logout.
         eventsProvider.on(CoreEventsProvider.LOGOUT, (data) => {
@@ -64,10 +71,10 @@ export class CoreSyncProvider {
     /**
      * Block a component and ID so it cannot be synchronized.
      *
-     * @param {string} component Component name.
-     * @param {string | number} id Unique ID per component.
-     * @param {string} [operation] Operation name. If not defined, a default text is used.
-     * @param {string} [siteId] Site ID. If not defined, current site.
+     * @param component Component name.
+     * @param id Unique ID per component.
+     * @param operation Operation name. If not defined, a default text is used.
+     * @param siteId Site ID. If not defined, current site.
      */
     blockOperation(component: string, id: string | number, operation?: string, siteId?: string): void {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
@@ -90,7 +97,7 @@ export class CoreSyncProvider {
     /**
      * Clear all blocks for a site or all sites.
      *
-     * @param {string} [siteId] If set, clear the blocked objects only for this site. Otherwise clear them for all sites.
+     * @param siteId If set, clear the blocked objects only for this site. Otherwise clear them for all sites.
      */
     clearAllBlocks(siteId?: string): void {
         if (siteId) {
@@ -103,9 +110,9 @@ export class CoreSyncProvider {
     /**
      * Clear all blocks for a certain component.
      *
-     * @param {string} component Component name.
-     * @param {string | number} id Unique ID per component.
-     * @param {string} [siteId] Site ID. If not defined, current site.
+     * @param component Component name.
+     * @param id Unique ID per component.
+     * @param siteId Site ID. If not defined, current site.
      */
     clearBlocks(component: string, id: string | number, siteId?: string): void {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
@@ -118,10 +125,10 @@ export class CoreSyncProvider {
 
     /**
      * Returns a sync record.
-     * @param  {string}           component Component name.
-     * @param  {string | number}  id        Unique ID per component.
-     * @param  {string}           [siteId]  Site ID. If not defined, current site.
-     * @return {Promise<any>}     Record if found or reject.
+     * @param component Component name.
+     * @param id Unique ID per component.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Record if found or reject.
      */
     getSyncRecord(component: string, id: string | number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSiteDb(siteId).then((db) => {
@@ -131,11 +138,11 @@ export class CoreSyncProvider {
 
     /**
      * Inserts or Updates info of a sync record.
-     * @param  {string}           component Component name.
-     * @param  {string | number}  id        Unique ID per component.
-     * @param  {any}              data      Data that updates the record.
-     * @param  {string}           [siteId]  Site ID. If not defined, current site.
-     * @return {Promise<any>}     Promise resolved with done.
+     * @param component Component name.
+     * @param id Unique ID per component.
+     * @param data Data that updates the record.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with done.
      */
     insertOrUpdateSyncRecord(component: string, id: string | number, data: any, siteId?: string): Promise<any> {
         return this.sitesProvider.getSiteDb(siteId).then((db) => {
@@ -149,9 +156,9 @@ export class CoreSyncProvider {
     /**
      * Convenience function to create unique identifiers for a component and id.
      *
-     * @param {string} component Component name.
-     * @param {string | number} id Unique ID per component.
-     * @return {string} Unique sync id.
+     * @param component Component name.
+     * @param id Unique ID per component.
+     * @return Unique sync id.
      */
     protected getUniqueSyncBlockId(component: string, id: string | number): string {
         return component + '#' + id;
@@ -161,10 +168,10 @@ export class CoreSyncProvider {
      * Check if a component is blocked.
      * One block can have different operations. Here we check how many operations are being blocking the object.
      *
-     * @param {string} component Component name.
-     * @param {string | number} id Unique ID per component.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {boolean} Whether it's blocked.
+     * @param component Component name.
+     * @param id Unique ID per component.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Whether it's blocked.
      */
     isBlocked(component: string, id: string | number, siteId?: string): boolean {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
@@ -184,10 +191,10 @@ export class CoreSyncProvider {
     /**
      * Unblock an operation on a component and ID.
      *
-     * @param {string} component Component name.
-     * @param {string | number} id Unique ID per component.
-     * @param {string} [operation] Operation name. If not defined, a default text is used.
-     * @param {string} [siteId] Site ID. If not defined, current site.
+     * @param component Component name.
+     * @param id Unique ID per component.
+     * @param operation Operation name. If not defined, a default text is used.
+     * @param siteId Site ID. If not defined, current site.
      */
     unblockOperation(component: string, id: string | number, operation?: string, siteId?: string): void {
         operation = operation || '-';
@@ -200,3 +207,5 @@ export class CoreSyncProvider {
         }
     }
 }
+
+export class CoreSync extends makeSingleton(CoreSyncProvider) {}

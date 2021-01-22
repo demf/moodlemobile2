@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,8 +21,10 @@ import { CoreLoggerProvider } from '@providers/logger';
 import { CoreSitesProvider } from '@providers/sites';
 import { CoreSyncProvider } from '@providers/sync';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
+import { CoreTimeUtilsProvider } from '@providers/utils/time';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreCourseProvider } from '@core/course/providers/course';
+import { CoreCourseLogHelperProvider } from '@core/course/providers/log-helper';
 import { CoreSyncBaseProvider } from '@classes/base-sync';
 import { AddonModWikiProvider } from './wiki';
 import { AddonModWikiOfflineProvider } from './wiki-offline';
@@ -33,25 +35,21 @@ import { AddonModWikiOfflineProvider } from './wiki-offline';
 export interface AddonModWikiSyncSubwikiResult {
     /**
      * List of warnings.
-     * @type {string[]}
      */
     warnings: string[];
 
     /**
      * Whether data was updated in the site.
-     * @type {boolean}
      */
     updated: boolean;
 
     /**
      * List of created pages.
-     * @type {{pageId: number, title: string}}
      */
     created: {pageId: number, title: string}[];
 
     /**
      * List of discarded pages.
-     * @type {{title: string, warning: string}}
      */
     discarded: {title: string, warning: string}[];
 }
@@ -62,19 +60,16 @@ export interface AddonModWikiSyncSubwikiResult {
 export interface AddonModWikiSyncWikiResult {
     /**
      * List of warnings.
-     * @type {string[]}
      */
     warnings: string[];
 
     /**
      * Whether data was updated in the site.
-     * @type {boolean}
      */
     updated: boolean;
 
     /**
      * List of subwikis.
-     * @type {{[subwikiId: number]: {created: {pageId: number, title: string}, discarded: {title: string, warning: string}}}}
      */
     subwikis: {[subwikiId: number]: {
         created: {pageId: number, title: string}[],
@@ -83,7 +78,6 @@ export interface AddonModWikiSyncWikiResult {
 
     /**
      * Site ID.
-     * @type {string}
      */
     siteId: string;
 }
@@ -103,9 +97,11 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
             syncProvider: CoreSyncProvider, textUtils: CoreTextUtilsProvider, translate: TranslateService,
             courseProvider: CoreCourseProvider, private eventsProvider: CoreEventsProvider,
             private wikiProvider: AddonModWikiProvider, private wikiOfflineProvider: AddonModWikiOfflineProvider,
-            private utils: CoreUtilsProvider, private groupsProvider: CoreGroupsProvider) {
+            private utils: CoreUtilsProvider, private groupsProvider: CoreGroupsProvider, timeUtils: CoreTimeUtilsProvider,
+            private logHelper: CoreCourseLogHelperProvider) {
 
-        super('AddonModWikiSyncProvider', loggerProvider, sitesProvider, appProvider, syncProvider, textUtils, translate);
+        super('AddonModWikiSyncProvider', loggerProvider, sitesProvider, appProvider, syncProvider, textUtils, translate,
+                timeUtils);
 
         this.componentTranslate = courseProvider.translateModuleName('wiki');
     }
@@ -113,11 +109,11 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
     /**
      * Get a string to identify a subwiki. If it doesn't have a subwiki ID it will be identified by wiki ID, user ID and group ID.
      *
-     * @param {number} subwikiId Subwiki ID. If not defined, wikiId, userId and groupId should be defined.
-     * @param {number} [wikiId] Wiki ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @param {number} [userId] User ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @param {number} [groupId] Group ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @return {string} Identifier.
+     * @param subwikiId Subwiki ID. If not defined, wikiId, userId and groupId should be defined.
+     * @param wikiId Wiki ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @param userId User ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @param groupId Group ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @return Identifier.
      */
     getSubwikiBlockId(subwikiId: number, wikiId?: number, userId?: number, groupId?: number): string {
         subwikiId = this.wikiOfflineProvider.convertToPositiveNumber(subwikiId);
@@ -138,20 +134,22 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
     /**
      * Try to synchronize all the wikis in a certain site or in all sites.
      *
-     * @param {string} [siteId] Site ID to sync. If not defined, sync all sites.
-     * @return {Promise<any>} Promise resolved if sync is successful, rejected if sync fails.
+     * @param siteId Site ID to sync. If not defined, sync all sites.
+     * @param force Wether to force sync not depending on last execution.
+     * @return Promise resolved if sync is successful, rejected if sync fails.
      */
-    syncAllWikis(siteId?: string): Promise<any> {
-        return this.syncOnSites('all wikis', this.syncAllWikisFunc.bind(this), [], siteId);
+    syncAllWikis(siteId?: string, force?: boolean): Promise<any> {
+        return this.syncOnSites('all wikis', this.syncAllWikisFunc.bind(this), [force], siteId);
     }
 
     /**
      * Sync all wikis on a site.
      *
-     * @param {string} [siteId] Site ID to sync. If not defined, sync all sites.
-     * @param {Promise<any>} Promise resolved if sync is successful, rejected if sync fails.
+     * @param siteId Site ID to sync.
+     * @param force Wether to force sync not depending on last execution.
+     * @param Promise resolved if sync is successful, rejected if sync fails.
      */
-    protected syncAllWikisFunc(siteId?: string): Promise<any> {
+    protected syncAllWikisFunc(siteId: string, force?: boolean): Promise<any> {
         // Get all the pages created in offline.
         return this.wikiOfflineProvider.getAllNewPages(siteId).then((pages) => {
             const promises = [],
@@ -167,8 +165,10 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
             for (const id in subwikis) {
                 const subwiki = subwikis[id];
 
-                promises.push(this.syncSubwikiIfNeeded(subwiki.subwikiid, subwiki.wikiid, subwiki.userid, subwiki.groupid,
-                        siteId).then((result) => {
+                const promise = force ? this.syncSubwiki(subwiki.subwikiid, subwiki.wikiid, subwiki.userid, subwiki.groupid, siteId)
+                    : this.syncSubwikiIfNeeded(subwiki.subwikiid, subwiki.wikiid, subwiki.userid, subwiki.groupid, siteId);
+
+                promises.push(promise.then((result) => {
 
                     if (result && result.updated) {
                         // Sync successful, send event.
@@ -193,12 +193,12 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
     /**
      * Sync a subwiki only if a certain time has passed since the last time.
      *
-     * @param {number} subwikiId Subwiki ID. If not defined, wikiId, userId and groupId should be defined.
-     * @param {number} [wikiId] Wiki ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @param {number} [userId] User ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @param {number} [groupId] Group ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<void|AddonModWikiSyncSubwikiResult>} Promise resolved when subwiki is synced or doesn't need to be synced.
+     * @param subwikiId Subwiki ID. If not defined, wikiId, userId and groupId should be defined.
+     * @param wikiId Wiki ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @param userId User ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @param groupId Group ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when subwiki is synced or doesn't need to be synced.
      */
     syncSubwikiIfNeeded(subwikiId: number, wikiId?: number, userId?: number, groupId?: number, siteId?: string)
             : Promise<void | AddonModWikiSyncSubwikiResult> {
@@ -215,12 +215,12 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
     /**
      * Synchronize a subwiki.
      *
-     * @param {number} subwikiId Subwiki ID. If not defined, wikiId, userId and groupId should be defined.
-     * @param {number} [wikiId] Wiki ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @param {number} [userId] User ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @param {number} [groupId] Group ID. Optional, will be used to create the subwiki if subwiki ID not provided.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<AddonModWikiSyncSubwikiResult>} Promise resolved if sync is successful, rejected otherwise.
+     * @param subwikiId Subwiki ID. If not defined, wikiId, userId and groupId should be defined.
+     * @param wikiId Wiki ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @param userId User ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @param groupId Group ID. Optional, will be used to create the subwiki if subwiki ID not provided.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved if sync is successful, rejected otherwise.
      */
     syncSubwiki(subwikiId: number, wikiId?: number, userId?: number, groupId?: number, siteId?: string)
             : Promise<AddonModWikiSyncSubwikiResult> {
@@ -266,8 +266,13 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
 
             // Send the pages.
             pages.forEach((page) => {
-                promises.push(this.wikiProvider.newPageOnline(page.title, page.cachedcontent, subwikiId, wikiId, userId, groupId,
-                        siteId).then((pageId) => {
+                promises.push(this.wikiProvider.newPageOnline(page.title, page.cachedcontent, {
+                    subwikiId,
+                    wikiId,
+                    userId,
+                    groupId,
+                    siteId,
+                }).then((pageId) => {
 
                     result.updated = true;
 
@@ -291,7 +296,7 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
                             const warning = this.translate.instant('core.warningofflinedatadeleted', {
                                 component: this.translate.instant('addon.mod_wiki.wikipage'),
                                 name: page.title,
-                                error: error
+                                error: this.textUtils.getErrorMessageFromError(error)
                             });
 
                             result.discarded.push({
@@ -325,17 +330,22 @@ export class AddonModWikiSyncProvider extends CoreSyncBaseProvider {
     /**
      * Tries to synchronize a wiki.
      *
-     * @param {number} wikiId Wiki ID.
-     * @param {number} [courseId] Course ID.
-     * @param {number} [cmId] Wiki course module ID.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<AddonModWikiSyncWikiResult>} Promise resolved if sync is successful, rejected otherwise.
+     * @param wikiId Wiki ID.
+     * @param courseId Course ID.
+     * @param cmId Wiki course module ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved if sync is successful, rejected otherwise.
      */
     syncWiki(wikiId: number, courseId?: number, cmId?: number, siteId?: string): Promise<AddonModWikiSyncWikiResult> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
 
-        // Sync is done at subwiki level, get all the subwikis.
-        return this.wikiProvider.getSubwikis(wikiId).then((subwikis) => {
+        // Sync offline logs.
+        return this.logHelper.syncIfNeeded(AddonModWikiProvider.COMPONENT, wikiId, siteId).catch(() => {
+            // Ignore errors.
+         }).then(() => {
+            // Sync is done at subwiki level, get all the subwikis.
+            return this.wikiProvider.getSubwikis(wikiId, {cmId});
+        }).then((subwikis) => {
             const promises = [],
                 result: AddonModWikiSyncWikiResult = {
                     warnings: [],

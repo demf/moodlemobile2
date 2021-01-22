@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,9 +14,14 @@
 
 import { Injectable } from '@angular/core';
 import { CoreLoggerProvider } from '@providers/logger';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSitesCommonWSOptions } from '@providers/sites';
+import { CoreMimetypeUtilsProvider } from '@providers/utils/mimetype';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreCourseProvider } from '@core/course/providers/course';
+import { CoreCourseLogHelperProvider } from '@core/course/providers/log-helper';
+import { CoreConstants } from '@core/constants';
+import { CoreSite } from '@classes/site';
+import { CoreWSExternalWarning, CoreWSExternalFile } from '@providers/ws';
 
 /**
  * Service that provides some features for urls.
@@ -29,15 +34,68 @@ export class AddonModUrlProvider {
     protected logger;
 
     constructor(logger: CoreLoggerProvider, private sitesProvider: CoreSitesProvider, private courseProvider: CoreCourseProvider,
-            private utils: CoreUtilsProvider) {
+            private utils: CoreUtilsProvider, private mimeUtils: CoreMimetypeUtilsProvider,
+            private logHelper: CoreCourseLogHelperProvider) {
         this.logger = logger.getInstance('AddonModUrlProvider');
+    }
+
+    /**
+     * Get the final display type for a certain URL. Based on Moodle's url_get_final_display_type.
+     *
+     * @param url URL data.
+     * @return Final display type.
+     */
+    getFinalDisplayType(url: AddonModUrlUrl): number {
+        if (!url) {
+            return -1;
+        }
+
+        const extension = this.mimeUtils.guessExtensionFromUrl(url.externalurl);
+
+        // PDFs can be embedded in web, but not in the Mobile app.
+        if (url.display == CoreConstants.RESOURCELIB_DISPLAY_EMBED && extension == 'pdf') {
+            return CoreConstants.RESOURCELIB_DISPLAY_DOWNLOAD;
+        }
+
+        if (url.display != CoreConstants.RESOURCELIB_DISPLAY_AUTO) {
+            return url.display;
+        }
+
+        // Detect links to local moodle pages.
+        const currentSite = this.sitesProvider.getCurrentSite();
+        if (currentSite && currentSite.containsUrl(url.externalurl)) {
+            if (url.externalurl.indexOf('file.php') == -1 && url.externalurl.indexOf('.php') != -1) {
+                // Most probably our moodle page with navigation.
+                return CoreConstants.RESOURCELIB_DISPLAY_OPEN;
+            }
+        }
+
+        const download = ['application/zip', 'application/x-tar', 'application/g-zip', 'application/pdf', 'text/html'];
+        let mimetype = this.mimeUtils.getMimeType(extension);
+
+        if (url.externalurl.indexOf('.php') != -1 || url.externalurl.substr(-1) === '/' ||
+                (url.externalurl.indexOf('//') != -1 && url.externalurl.match(/\//g).length == 2)) {
+            // Seems to be a web, use HTML mimetype.
+            mimetype = 'text/html';
+        }
+
+        if (download.indexOf(mimetype) != -1) {
+            return CoreConstants.RESOURCELIB_DISPLAY_DOWNLOAD;
+        }
+
+        if (this.mimeUtils.canBeEmbedded(extension)) {
+            return CoreConstants.RESOURCELIB_DISPLAY_EMBED;
+        }
+
+        // Let the browser deal with it somehow.
+        return CoreConstants.RESOURCELIB_DISPLAY_OPEN;
     }
 
     /**
      * Get cache key for url data WS calls.
      *
-     * @param {number} courseId Course ID.
-     * @return {string}         Cache key.
+     * @param courseId Course ID.
+     * @return Cache key.
      */
     protected getUrlCacheKey(courseId: number): string {
         return this.ROOT_CACHE_KEY + 'url:' + courseId;
@@ -46,22 +104,29 @@ export class AddonModUrlProvider {
     /**
      * Get a url data.
      *
-     * @param {number} courseId Course ID.
-     * @param {string} key     Name of the property to check.
-     * @param {any}  value   Value to search.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>}  Promise resolved when the url is retrieved.
+     * @param courseId Course ID.
+     * @param key Name of the property to check.
+     * @param value Value to search.
+     * @param options Other options.
+     * @return Promise resolved when the url is retrieved.
      */
-    protected getUrlDataByKey(courseId: number, key: string, value: any, siteId?: string): Promise<any> {
-        return this.sitesProvider.getSite(siteId).then((site) => {
-            const params = {
-                    courseids: [courseId]
-                },
-                preSets = {
-                    cacheKey: this.getUrlCacheKey(courseId)
-                };
+    protected getUrlDataByKey(courseId: number, key: string, value: any, options: CoreSitesCommonWSOptions = {})
+            : Promise<AddonModUrlUrl> {
 
-            return site.read('mod_url_get_urls_by_courses', params, preSets).then((response) => {
+        return this.sitesProvider.getSite(options.siteId).then((site) => {
+            const params = {
+                courseids: [courseId],
+            };
+            const preSets = {
+                cacheKey: this.getUrlCacheKey(courseId),
+                updateFrequency: CoreSite.FREQUENCY_RARELY,
+                component: AddonModUrlProvider.COMPONENT,
+                ...this.sitesProvider.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
+            };
+
+            return site.read('mod_url_get_urls_by_courses', params, preSets)
+                    .then((response: AddonModUrlGetUrlsByCoursesResult): any => {
+
                 if (response && response.urls) {
                     const currentUrl = response.urls.find((url) => {
                         return url[key] == value;
@@ -79,22 +144,49 @@ export class AddonModUrlProvider {
     /**
      * Get a url by course module ID.
      *
-     * @param {number} courseId Course ID.
-     * @param {number} cmId     Course module ID.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>}   Promise resolved when the url is retrieved.
+     * @param courseId Course ID.
+     * @param cmId Course module ID.
+     * @param options Other options.
+     * @return Promise resolved when the url is retrieved.
      */
-    getUrl(courseId: number, cmId: number, siteId?: string): Promise<any> {
-        return this.getUrlDataByKey(courseId, 'coursemodule', cmId, siteId);
+    getUrl(courseId: number, cmId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModUrlUrl> {
+        return this.getUrlDataByKey(courseId, 'coursemodule', cmId, options);
+    }
+
+    /**
+     * Guess the icon for a certain URL. Based on Moodle's url_guess_icon.
+     *
+     * @param url URL to check.
+     * @return Icon, empty if it should use the default icon.
+     */
+    guessIcon(url: string): string {
+        url = url || '';
+
+        const matches = url.match(/\//g),
+            extension = this.mimeUtils.getFileExtension(url);
+
+        if (!matches || matches.length < 3 || url.substr(-1) === '/' || extension == 'php') {
+            // Use default icon.
+            return '';
+        }
+
+        const icon = this.mimeUtils.getFileIcon(url);
+
+        // We do not want to return those icon types, the module icon is more appropriate.
+        if (icon === this.mimeUtils.getFileIconForType('unknown') || icon === this.mimeUtils.getFileIconForType('html')) {
+            return '';
+        }
+
+        return icon;
     }
 
     /**
      * Invalidate the prefetched content.
      *
-     * @param  {number} moduleId The module ID.
-     * @param  {number} courseId Course ID of the module.
-     * @param  {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>}    Promise resolved when the data is invalidated.
+     * @param moduleId The module ID.
+     * @param courseId Course ID of the module.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateContent(moduleId: number, courseId: number, siteId?: string): Promise<any> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
@@ -110,9 +202,9 @@ export class AddonModUrlProvider {
     /**
      * Invalidates url data.
      *
-     * @param {number} courseid Course ID.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>}   Promise resolved when the data is invalidated.
+     * @param courseid Course ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateUrlData(courseId: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -123,7 +215,7 @@ export class AddonModUrlProvider {
     /**
      * Returns whether or not getUrl WS available or not.
      *
-     * @return {boolean} If WS is abalaible.
+     * @return If WS is abalaible.
      * @since 3.3
      */
     isGetUrlWSAvailable(): boolean {
@@ -133,14 +225,46 @@ export class AddonModUrlProvider {
     /**
      * Report the url as being viewed.
      *
-     * @param {number} id Module ID.
-     * @return {Promise<any>}  Promise resolved when the WS call is successful.
+     * @param id Module ID.
+     * @param name Name of the assign.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the WS call is successful.
      */
-    logView(id: number): Promise<any> {
+    logView(id: number, name?: string, siteId?: string): Promise<any> {
         const params = {
             urlid: id
         };
 
-        return this.sitesProvider.getCurrentSite().write('mod_url_view_url', params);
+        return this.logHelper.logSingle('mod_url_view_url', params, AddonModUrlProvider.COMPONENT, id, name, 'url', {}, siteId);
     }
 }
+
+/**
+ * URL returnd by mod_url_get_urls_by_courses.
+ */
+export type AddonModUrlUrl = {
+    id: number; // Module id.
+    coursemodule: number; // Course module id.
+    course: number; // Course id.
+    name: string; // URL name.
+    intro: string; // Summary.
+    introformat: number; // Intro format (1 = HTML, 0 = MOODLE, 2 = PLAIN or 4 = MARKDOWN).
+    introfiles: CoreWSExternalFile[];
+    externalurl: string; // External URL.
+    display: number; // How to display the url.
+    displayoptions: string; // Display options (width, height).
+    parameters: string; // Parameters to append to the URL.
+    timemodified: number; // Last time the url was modified.
+    section: number; // Course section id.
+    visible: number; // Module visibility.
+    groupmode: number; // Group mode.
+    groupingid: number; // Grouping id.
+};
+
+/**
+ * Result of WS mod_url_get_urls_by_courses.
+ */
+export type AddonModUrlGetUrlsByCoursesResult = {
+    urls: AddonModUrlUrl[];
+    warnings?: CoreWSExternalWarning[];
+};

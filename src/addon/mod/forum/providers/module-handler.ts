@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@core/cour
 import { CoreCourseProvider } from '@core/course/providers/course';
 import { AddonModForumProvider } from './forum';
 import { AddonModForumIndexComponent } from '../components/index/index';
+import { CoreConstants } from '@core/constants';
 
 /**
  * Handler to support forum modules.
@@ -30,6 +31,20 @@ export class AddonModForumModuleHandler implements CoreCourseModuleHandler {
     name = 'AddonModForum';
     modName = 'forum';
 
+    supportedFeatures = {
+        [CoreConstants.FEATURE_GROUPS]: true,
+        [CoreConstants.FEATURE_GROUPINGS]: true,
+        [CoreConstants.FEATURE_MOD_INTRO]: true,
+        [CoreConstants.FEATURE_COMPLETION_TRACKS_VIEWS]: true,
+        [CoreConstants.FEATURE_COMPLETION_HAS_RULES]: true,
+        [CoreConstants.FEATURE_GRADE_HAS_GRADE]: true,
+        [CoreConstants.FEATURE_GRADE_OUTCOMES]: true,
+        [CoreConstants.FEATURE_BACKUP_MOODLE2]: true,
+        [CoreConstants.FEATURE_SHOW_DESCRIPTION]: true,
+        [CoreConstants.FEATURE_RATE]: true,
+        [CoreConstants.FEATURE_PLAGIARISM]: true
+    };
+
     constructor(private courseProvider: CoreCourseProvider, private forumProvider: AddonModForumProvider,
             private translate: TranslateService, private eventsProvider: CoreEventsProvider,
             private sitesProvider: CoreSitesProvider) {}
@@ -37,7 +52,7 @@ export class AddonModForumModuleHandler implements CoreCourseModuleHandler {
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return {boolean} Whether or not the handler is enabled on a site level.
+     * @return Whether or not the handler is enabled on a site level.
      */
     isEnabled(): boolean {
         return true;
@@ -46,23 +61,33 @@ export class AddonModForumModuleHandler implements CoreCourseModuleHandler {
     /**
      * Get the data required to display the module in the course contents view.
      *
-     * @param {any} module The module object.
-     * @param {number} courseId The course ID.
-     * @param {number} sectionId The section ID.
-     * @return {CoreCourseModuleHandlerData} Data to render the module.
+     * @param module The module object.
+     * @param courseId The course ID.
+     * @param sectionId The section ID.
+     * @return Data to render the module.
      */
     getData(module: any, courseId: number, sectionId: number): CoreCourseModuleHandlerData {
         const data: CoreCourseModuleHandlerData = {
-            icon: this.courseProvider.getModuleIconSrc('forum'),
+            icon: this.courseProvider.getModuleIconSrc(this.modName, module.modicon),
             title: module.name,
             class: 'addon-mod_forum-handler',
             showDownloadButton: true,
-            action(event: Event, navCtrl: NavController, module: any, courseId: number, options: NavOptions): void {
-                navCtrl.push('AddonModForumIndexPage', {module: module, courseId: courseId}, options);
+            action(event: Event, navCtrl: NavController, module: any, courseId: number, options: NavOptions, params?: any): void {
+                const pageParams = {module: module, courseId: courseId};
+                if (params) {
+                    Object.assign(pageParams, params);
+                }
+                navCtrl.push('AddonModForumIndexPage', pageParams, options);
             }
         };
 
-        this.updateExtraBadge(data, courseId, module.id);
+        if (typeof module.afterlink != 'undefined') {
+            data.extraBadgeColor = '';
+            const match = />(\d+)[^<]+/.exec(module.afterlink);
+            data.extraBadge = match ? this.translate.instant('addon.mod_forum.unreadpostsnumber', {$a : match[1] }) : '';
+        } else {
+            this.updateExtraBadge(data, courseId, module.id);
+        }
 
         const event = this.eventsProvider.on(AddonModForumProvider.MARK_READ_EVENT, (eventData) => {
             if (eventData.courseId == courseId && eventData.moduleId == module.id) {
@@ -81,9 +106,9 @@ export class AddonModForumModuleHandler implements CoreCourseModuleHandler {
      * Get the component to render the module. This is needed to support singleactivity course format.
      * The component returned must implement CoreCourseModuleMainComponent.
      *
-     * @param {any} course The course object.
-     * @param {any} module The module object.
-     * @return {any} The component to use, undefined if not found.
+     * @param course The course object.
+     * @param module The module object.
+     * @return The component to use, undefined if not found.
      */
     getMainComponent(course: any, module: any): any {
         return AddonModForumIndexComponent;
@@ -93,7 +118,7 @@ export class AddonModForumModuleHandler implements CoreCourseModuleHandler {
      * Whether to display the course refresher in single activity course format. If it returns false, a refresher must be
      * included in the template that calls the doRefresh method of the component. Defaults to true.
      *
-     * @return {boolean} Whether the refresher should be displayed.
+     * @return Whether the refresher should be displayed.
      */
     displayRefresherInSingleActivity(): boolean {
         return false;
@@ -102,10 +127,10 @@ export class AddonModForumModuleHandler implements CoreCourseModuleHandler {
     /**
      * Triggers an update for the extra badge text.
      *
-     * @param  {CoreCourseModuleHandlerData} data Course Module Handler data.
-     * @param  {number} courseId Course ID.
-     * @param  {number} moduleId Course module ID.
-     * @param  {string} [siteId] Site ID. If not defined, current site.
+     * @param data Course Module Handler data.
+     * @param courseId Course ID.
+     * @param moduleId Course module ID.
+     * @param siteId Site ID. If not defined, current site.
      */
     updateExtraBadge(data: CoreCourseModuleHandlerData, courseId: number, moduleId: number, siteId?: string): void {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
@@ -118,7 +143,7 @@ export class AddonModForumModuleHandler implements CoreCourseModuleHandler {
 
         this.forumProvider.invalidateForumData(courseId).finally(() => {
             // Handle unread posts.
-            this.forumProvider.getForum(courseId, moduleId, siteId).then((forumData) => {
+            this.forumProvider.getForum(courseId, moduleId, {siteId}).then((forumData) => {
                 data.extraBadgeColor = '';
                 data.extraBadge = forumData.unreadpostscount ? this.translate.instant('addon.mod_forum.unreadpostsnumber',
                     {$a : forumData.unreadpostscount }) : '';

@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,17 +13,17 @@
 // limitations under the License.
 
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { IonicPage, NavParams, PopoverController } from 'ionic-angular';
+import { IonicPage, NavParams, ModalController } from 'ionic-angular';
 import { CoreEventsProvider } from '@providers/events';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSitesReadingStrategy } from '@providers/sites';
 import { CoreSyncProvider } from '@providers/sync';
-import { CoreDomUtilsProvider } from '@providers/utils/dom';
+import { CoreDomUtils } from '@providers/utils/dom';
 import { CoreTimeUtilsProvider } from '@providers/utils/time';
+import { CoreIonTabsComponent } from '@components/ion-tabs/ion-tabs';
 import { AddonModScormProvider, AddonModScormAttemptCountResult } from '../../providers/scorm';
 import { AddonModScormHelperProvider } from '../../providers/helper';
 import { AddonModScormSyncProvider } from '../../providers/scorm-sync';
 import { AddonModScormDataModel12 } from '../../classes/data-model-12';
-import { AddonModScormTocPopoverComponent } from '../../components/toc-popover/toc-popover';
 
 /**
  * Page that allows playing a SCORM.
@@ -45,6 +45,9 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     nextSco: any; // Next SCO.
     src: string; // Iframe src.
     errorMessage: string; // Error message.
+    accessInfo: any; // Access information.
+    scormWidth: null; // Width applied to scorm iframe.
+    scormHeight: null; // Height applied to scorm iframe.
 
     protected siteId: string;
     protected mode: string; // Mode to play the SCORM.
@@ -64,11 +67,18 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     protected launchPrevObserver: any;
     protected goOfflineObserver: any;
 
-    constructor(navParams: NavParams, protected popoverCtrl: PopoverController, protected eventsProvider: CoreEventsProvider,
-            protected sitesProvider: CoreSitesProvider, protected syncProvider: CoreSyncProvider,
-            protected domUtils: CoreDomUtilsProvider, protected timeUtils: CoreTimeUtilsProvider,
-            protected scormProvider: AddonModScormProvider, protected scormHelper: AddonModScormHelperProvider,
-            protected scormSyncProvider: AddonModScormSyncProvider) {
+    constructor(
+            navParams: NavParams,
+            protected modalCtrl: ModalController,
+            protected eventsProvider: CoreEventsProvider,
+            protected sitesProvider: CoreSitesProvider,
+            protected syncProvider: CoreSyncProvider,
+            protected timeUtils: CoreTimeUtilsProvider,
+            protected scormProvider: AddonModScormProvider,
+            protected scormHelper: AddonModScormHelperProvider,
+            protected scormSyncProvider: AddonModScormSyncProvider,
+            protected tabs: CoreIonTabsComponent
+            ) {
 
         this.scorm = navParams.get('scorm') || {};
         this.mode = navParams.get('mode') || AddonModScormProvider.MODENORMAL;
@@ -92,12 +102,16 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
         this.showToc = this.scormProvider.displayTocInPlayer(this.scorm);
 
         if (this.scorm.popup) {
-            // If we receive a value <= 100 we need to assume it's a percentage.
-            if (this.scorm.width <= 100) {
-                this.scorm.width = this.scorm.width + '%';
-            }
-            if (this.scorm.height <= 100) {
-                this.scorm.height = this.scorm.height + '%';
+            this.tabs.changeVisibility(false);
+
+            // If we receive a value > 100 we assume it's a fixed pixel size.
+            if (this.scorm.width > 100) {
+                this.scormWidth = this.scorm.width;
+
+                // Only get fixed size on height if width is also fixed.
+                if (this.scorm.height > 100) {
+                    this.scormHeight = this.scorm.height;
+                }
             }
         }
 
@@ -108,7 +122,7 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
                 const promise = this.newAttempt ? this.setStartTime(this.currentSco.id) : Promise.resolve();
 
                 return promise.catch((error) => {
-                    this.domUtils.showErrorModalDefault(error, 'addon.mod_scorm.errorgetscorm', true);
+                    CoreDomUtils.instance.showErrorModalDefault(error, 'addon.mod_scorm.errorgetscorm', true);
                 }).finally(() => {
                     // Load SCO.
                     this.loadSco(this.currentSco);
@@ -149,7 +163,7 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
                 // Wait a bit to prevent collisions between this store and SCORM API's store.
                 setTimeout(() => {
                     this.scormHelper.convertAttemptToOffline(this.scorm, this.attempt).catch((error) => {
-                        this.domUtils.showErrorModalDefault(error, 'core.error', true);
+                        CoreDomUtils.instance.showErrorModalDefault(error, 'core.error', true);
                     }).then(() => {
                         this.refreshToc();
                     });
@@ -161,7 +175,7 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     /**
      * Calculate the next and previous SCO.
      *
-     * @param {number} scoId Current SCO ID.
+     * @param scoId Current SCO ID.
      */
     protected calculateNextAndPreviousSco(scoId: number): void {
         this.previousSco = this.scormHelper.getPreviousScoFromToc(this.toc, scoId);
@@ -171,8 +185,8 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     /**
      * Determine the attempt to use, the mode (normal/preview) and if it's offline or online.
      *
-     * @param {AddonModScormAttemptCountResult} attemptsData Attempts count.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param attemptsData Attempts count.
+     * @return Promise resolved when done.
      */
     protected determineAttemptAndMode(attemptsData: AddonModScormAttemptCountResult): Promise<any> {
         let result;
@@ -187,7 +201,10 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
 
             // Check if current attempt is incomplete.
             if (this.attempt > 0) {
-                return this.scormProvider.isAttemptIncomplete(this.scorm.id, this.attempt, this.offline);
+                return this.scormProvider.isAttemptIncomplete(this.scorm.id, this.attempt, {
+                    offline: this.offline,
+                    cmId: this.scorm.coursemodule,
+                });
             } else {
                 // User doesn't have attempts. Last attempt is not incomplete (since he doesn't have any).
                 return false;
@@ -203,7 +220,10 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
                     return this.scormHelper.createOfflineAttempt(this.scorm, result.attempt, attemptsData.online.length);
                 } else {
                     // Last attempt was online, verify that we can create a new online attempt. We ignore cache.
-                    return this.scormProvider.getScormUserData(this.scorm.id, result.attempt, undefined, false, true).catch(() => {
+                    return this.scormProvider.getScormUserData(this.scorm.id, result.attempt, {
+                        cmId: this.scorm.coursemodule,
+                        readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+                    }).catch(() => {
                         // Cannot communicate with the server, create an offline attempt.
                         this.offline = true;
 
@@ -221,27 +241,35 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     /**
      * Fetch data needed to play the SCORM.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected fetchData(): Promise<any> {
         // Wait for any ongoing sync to finish. We won't sync a SCORM while it's being played.
         return this.scormSyncProvider.waitForSync(this.scorm.id).then(() => {
             // Get attempts data.
-            return this.scormProvider.getAttemptCount(this.scorm.id).then((attemptsData) => {
+            return this.scormProvider.getAttemptCount(this.scorm.id, {cmId: this.scorm.coursemodule}).then((attemptsData) => {
                 return this.determineAttemptAndMode(attemptsData).then(() => {
                     // Fetch TOC and get user data.
                     const promises = [];
 
                     promises.push(this.fetchToc());
-                    promises.push(this.scormProvider.getScormUserData(this.scorm.id, this.attempt, undefined, this.offline)
-                            .then((data) => {
+                    promises.push(this.scormProvider.getScormUserData(this.scorm.id, this.attempt, {
+                        cmId: this.scorm.coursemodule,
+                        offline: this.offline,
+                    }).then((data) => {
                         this.userData = data;
+                    }));
+                    // Get access information.
+                    promises.push(this.scormProvider.getAccessInformation(this.scorm.id, {
+                        cmId: this.scorm.coursemodule,
+                    }).then((accessInfo) => {
+                        this.accessInfo = accessInfo;
                     }));
 
                     return Promise.all(promises);
                 });
             }).catch((error) => {
-                this.domUtils.showErrorModalDefault(error, 'addon.mod_scorm.errorgetscorm', true);
+                CoreDomUtils.instance.showErrorModalDefault(error, 'addon.mod_scorm.errorgetscorm', true);
             });
         });
     }
@@ -249,17 +277,24 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     /**
      * Fetch the TOC.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected fetchToc(): Promise<any> {
         this.loadingToc = true;
 
         // We need to check incomplete again: attempt number or status might have changed.
-        return this.scormProvider.isAttemptIncomplete(this.scorm.id, this.attempt, this.offline).then((incomplete) => {
+        return this.scormProvider.isAttemptIncomplete(this.scorm.id, this.attempt, {
+            offline: this.offline,
+            cmId: this.scorm.coursemodule,
+        }).then((incomplete) => {
             this.scorm.incomplete = incomplete;
 
             // Get TOC.
-            return this.scormProvider.getOrganizationToc(this.scorm.id, this.attempt, this.organizationId, this.offline);
+            return this.scormProvider.getOrganizationToc(this.scorm.id, this.attempt, {
+                organization: this.organizationId,
+                offline: this.offline,
+                cmId: this.scorm.coursemodule,
+            });
         }).then((toc) => {
             this.toc = this.scormProvider.formatTocToArray(toc);
 
@@ -268,24 +303,36 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
                 sco.image = this.scormProvider.getScoStatusIcon(sco, this.scorm.incomplete);
             });
 
-            // Determine current SCO if we received an ID..
-            if (this.initialScoId > 0) {
-                // SCO set by parameter, get it from TOC.
-                this.currentSco = this.scormHelper.getScoFromToc(this.toc, this.initialScoId);
-            }
-
             if (!this.currentSco) {
-                // No SCO defined. Get the first valid one.
-                return this.scormHelper.getFirstSco(this.scorm.id, this.attempt, this.toc, this.organizationId, this.offline)
-                        .then((sco) => {
+                if (this.newAttempt) {
+                    // Creating a new attempt, use the first SCO defined by the SCORM.
+                    this.initialScoId = this.scorm.launch;
+                }
 
-                    if (sco) {
-                        this.currentSco = sco;
-                    } else {
-                        // We couldn't find a SCO to load: they're all inactive or without launch URL.
-                        this.errorMessage = 'addon.mod_scorm.errornovalidsco';
-                    }
-                });
+                // Determine current SCO if we received an ID.
+                if (this.initialScoId > 0) {
+                    // SCO set by parameter, get it from TOC.
+                    this.currentSco = this.scormHelper.getScoFromToc(this.toc, this.initialScoId);
+                }
+
+                if (!this.currentSco) {
+                    // No SCO defined. Get the first valid one.
+                    return this.scormHelper.getFirstSco(this.scorm.id, this.attempt, {
+                        toc: this.toc,
+                        organization: this.organizationId,
+                        mode: this.mode,
+                        offline: this.offline,
+                        cmId: this.scorm.coursemodule,
+                    }).then((sco) => {
+
+                        if (sco) {
+                            this.currentSco = sco;
+                        } else {
+                            // We couldn't find a SCO to load: they're all inactive or without launch URL.
+                            this.errorMessage = 'addon.mod_scorm.errornovalidsco';
+                        }
+                    });
+                }
             }
         }).finally(() => {
             this.loadingToc = false;
@@ -295,7 +342,9 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     /**
      * Page will leave.
      */
-    ionViewWillLeave(): void {
+    ionViewWillUnload(): void {
+        this.eventsProvider.trigger(CoreEventsProvider.ACTIVITY_DATA_SENT, { module: 'scorm' });
+
         // Empty src when leaving the state so unload event is triggered in the iframe.
         this.src = '';
     }
@@ -303,7 +352,7 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     /**
      * Load a SCO.
      *
-     * @param {any} sco The SCO to load.
+     * @param sco The SCO to load.
      */
     protected loadSco(sco: any): void {
         if (!this.dataModel) {
@@ -347,7 +396,9 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
             this.scormProvider.saveTracks(sco.id, this.attempt, tracks, this.scorm, this.offline).catch(() => {
                 // Error saving data. We'll go offline if we're online and the asset is not marked as completed already.
                 if (!this.offline) {
-                    return this.scormProvider.getScormUserData(this.scorm.id, this.attempt, undefined, false).then((data) => {
+                    return this.scormProvider.getScormUserData(this.scorm.id, this.attempt, {
+                        cmId: this.scorm.coursemodule,
+                    }).then((data) => {
                         if (!data[sco.id] || data[sco.id].userdata['cmi.core.lesson_status'] != 'completed') {
                             // Go offline.
                             return this.scormHelper.convertAttemptToOffline(this.scorm, this.attempt).then(() => {
@@ -356,7 +407,7 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
 
                                 return this.scormProvider.saveTracks(sco.id, this.attempt, tracks, this.scorm, true);
                             }).catch((error) => {
-                                this.domUtils.showErrorModalDefault(error, 'core.error', true);
+                                CoreDomUtils.instance.showErrorModalDefault(error, 'core.error', true);
                             });
                         }
                     });
@@ -368,7 +419,7 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
         }
 
         // Trigger SCO launch event.
-        this.scormProvider.logLaunchSco(this.scorm.id, sco.id).catch(() => {
+        this.scormProvider.logLaunchSco(this.scorm.id, sco.id, this.scorm.name).catch(() => {
             // Ignore errors.
         });
     }
@@ -376,23 +427,31 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     /**
      * Show the TOC.
      *
-     * @param {MouseEvent} event Event.
+     * @param event Event.
      */
     openToc(event: MouseEvent): void {
-        const popover = this.popoverCtrl.create(AddonModScormTocPopoverComponent, {
+        const modal = this.modalCtrl.create('AddonModScormTocPage', {
             toc: this.toc,
             attemptToContinue: this.attemptToContinue,
-            mode: this.mode
-        });
+            mode: this.mode,
+            selected: this.currentSco && this.currentSco.id,
+            moduleId: this.scorm.coursemodule,
+            courseId: this.scorm.course,
+            accessInfo: this.accessInfo
+        }, { cssClass: 'core-modal-lateral',
+            showBackdrop: true,
+            enableBackdropDismiss: true,
+            enterAnimation: 'core-modal-lateral-transition',
+            leaveAnimation: 'core-modal-lateral-transition' });
 
-        // If the popover sends back a SCO, load it.
-        popover.onDidDismiss((sco) => {
+        // If the modal sends back a SCO, load it.
+        modal.onDidDismiss((sco) => {
             if (sco) {
                 this.loadSco(sco);
             }
         });
 
-        popover.present({
+        modal.present({
             ev: event
         });
     }
@@ -400,7 +459,7 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
     /**
      * Refresh the TOC.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected refreshToc(): Promise<any> {
         return this.scormProvider.invalidateAllScormData(this.scorm.id).catch(() => {
@@ -408,15 +467,15 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
         }).then(() => {
             return this.fetchToc();
         }).catch((error) => {
-            this.domUtils.showErrorModalDefault(error, 'addon.mod_scorm.errorgetscorm', true);
+            CoreDomUtils.instance.showErrorModalDefault(error, 'addon.mod_scorm.errorgetscorm', true);
         });
     }
 
     /**
      * Set SCORM start time.
      *
-     * @param {number} scoId SCO ID.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param scoId SCO ID.
+     * @return Promise resolved when done.
      */
     protected setStartTime(scoId: number): Promise<any> {
         const tracks = [{
@@ -427,7 +486,10 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
         return this.scormProvider.saveTracks(scoId, this.attempt, tracks, this.scorm, this.offline).then(() => {
             if (!this.offline) {
                 // New online attempt created, update cached data about online attempts.
-                this.scormProvider.getAttemptCount(this.scorm.id, false, true).catch(() => {
+                this.scormProvider.getAttemptCount(this.scorm.id, {
+                    cmId: this.scorm.coursemodule,
+                    readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+                }).catch(() => {
                     // Ignore errors.
                 });
             }
@@ -442,9 +504,12 @@ export class AddonModScormPlayerPage implements OnInit, OnDestroy {
         this.tocObserver && this.tocObserver.off();
         this.launchNextObserver && this.launchNextObserver.off();
         this.launchPrevObserver && this.launchPrevObserver.off();
-        this.goOfflineObserver && this.goOfflineObserver.off();
+        setTimeout(() => {
+            this.goOfflineObserver && this.goOfflineObserver.off();
+        }, 500);
 
         // Unblock the SCORM so it can be synced.
         this.syncProvider.unblockOperation(AddonModScormProvider.COMPONENT, this.scorm.id, 'player');
+        this.tabs.changeVisibility(true);
     }
 }

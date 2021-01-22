@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     now: number; // Current time.
     syncTime: string; // Last synchronization time.
     hasOffline: boolean; // Whether the quiz has offline data.
+    hasSupportedQuestions: boolean; // Whether the quiz has at least 1 supported question.
     accessRules: string[]; // List of access rules of the quiz.
     unsupportedRules: string[]; // List of unsupported access rules of the quiz.
     unsupportedQuestions: string[]; // List of unsupported question types of the quiz.
@@ -85,8 +86,8 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
                 return;
             }
 
-            this.quizProvider.logViewQuiz(this.quizData.id).then(() => {
-                this.courseProvider.checkModuleCompletion(this.courseId, this.module.completionstatus);
+            this.quizProvider.logViewQuiz(this.quizData.id, this.quizData.name).then(() => {
+                this.courseProvider.checkModuleCompletion(this.courseId, this.module.completiondata);
             }).catch((error) => {
                 // Ignore errors.
             });
@@ -147,10 +148,10 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * Get the quiz data.
      *
-     * @param {boolean} [refresh=false] If it's refreshing content.
-     * @param {boolean} [sync=false] If the refresh is needs syncing.
-     * @param {boolean} [showErrors=false] If show errors to the user of hide them.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param refresh If it's refreshing content.
+     * @param sync If it should try to sync.
+     * @param showErrors If show errors to the user of hide them.
+     * @return Promise resolved when done.
      */
     protected fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<any> {
 
@@ -201,7 +202,7 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
             }
 
             // Get quiz access info.
-            return this.quizProvider.getQuizAccessInformation(this.quizData.id).then((info) => {
+            return this.quizProvider.getQuizAccessInformation(this.quizData.id, {cmId: this.module.id}).then((info) => {
                 this.quizAccessInfo = info;
                 this.quizData.showReviewColumn = info.canreviewmyattempts;
                 this.accessRules = info.accessrules;
@@ -212,35 +213,37 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
                 }
 
                 // Get question types in the quiz.
-                return this.quizProvider.getQuizRequiredQtypes(this.quizData.id).then((types) => {
+                return this.quizProvider.getQuizRequiredQtypes(this.quizData.id, {cmId: this.module.id}).then((types) => {
                     this.unsupportedQuestions = this.quizProvider.getUnsupportedQuestions(types);
+                    this.hasSupportedQuestions = !!types.find((type) => {
+                        return type != 'random' && this.unsupportedQuestions.indexOf(type) == -1;
+                    });
 
                     return this.getAttempts();
                 });
             });
 
         }).then(() => {
-            // All data obtained, now fill the context menu.
-            this.fillContextMenu(refresh);
-
             // Quiz is ready to be shown, move it to the variable that is displayed.
             this.quiz = this.quizData;
+        }).finally(() => {
+            this.fillContextMenu(refresh);
         });
     }
 
     /**
      * Get the user attempts in the quiz and the result info.
      *
-     * @return {Promise<void>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected getAttempts(): Promise<void> {
 
         // Get access information of last attempt (it also works if no attempts made).
-        return this.quizProvider.getAttemptAccessInformation(this.quizData.id, 0).then((info) => {
+        return this.quizProvider.getAttemptAccessInformation(this.quizData.id, 0, {cmId: this.module.id}).then((info) => {
             this.attemptAccessInfo = info;
 
             // Get attempts.
-            return this.quizProvider.getUserAttempts(this.quizData.id).then((atts) => {
+            return this.quizProvider.getUserAttempts(this.quizData.id, {cmId: this.module.id}).then((atts) => {
 
                 return this.treatAttempts(atts).then((atts) => {
                     this.attempts = atts;
@@ -301,7 +304,7 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
                 this.buttonText = '';
             } else if (this.quizAccessInfo.canattempt && this.preventMessages.length) {
                 this.buttonText = '';
-            } else if (this.unsupportedQuestions.length || this.unsupportedRules.length || !this.behaviourSupported) {
+            } else if (!this.hasSupportedQuestions || this.unsupportedRules.length || !this.behaviourSupported) {
                 this.buttonText = '';
             }
         }
@@ -310,7 +313,7 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * Get result info to show.
      *
-     * @return {Promise<void>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected getResultInfo(): Promise<void> {
 
@@ -352,7 +355,9 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
 
             if (this.quizData.showFeedbackColumn) {
                 // Get the quiz overall feedback.
-                return this.quizProvider.getFeedbackForGrade(this.quizData.id, this.gradebookData.grade).then((response) => {
+                return this.quizProvider.getFeedbackForGrade(this.quizData.id, this.gradebookData.grade, {
+                    cmId: this.module.id,
+                }).then((response) => {
                     this.overallFeedback = response.feedbacktext;
                 });
             }
@@ -366,17 +371,17 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * Go to review an attempt that has just been finished.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected goToAutoReview(): Promise<any> {
         // If we go to auto review it means an attempt was finished. Check completion status.
-        this.courseProvider.checkModuleCompletion(this.courseId, this.module.completionstatus);
+        this.courseProvider.checkModuleCompletion(this.courseId, this.module.completiondata);
 
         // Verify that user can see the review.
         const attemptId = this.autoReview.attemptId;
 
         if (this.quizAccessInfo.canreviewmyattempts) {
-            return this.quizProvider.getAttemptReview(attemptId, -1).then(() => {
+            return this.quizProvider.getAttemptReview(attemptId, {page: -1, cmId: this.module.id}).then(() => {
                 this.navCtrl.push('AddonModQuizReviewPage', {courseId: this.courseId, quizId: this.quizData.id, attemptId});
             }).catch(() => {
                 // Ignore errors.
@@ -389,13 +394,13 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * Checks if sync has succeed from result sync data.
      *
-     * @param {any} result Data returned on the sync function.
-     * @return {boolean} If suceed or not.
+     * @param result Data returned on the sync function.
+     * @return If suceed or not.
      */
     protected hasSyncSucceed(result: any): boolean {
         if (result.attemptFinished) {
             // An attempt was finished, check completion status.
-            this.courseProvider.checkModuleCompletion(this.courseId, this.module.completionstatus);
+            this.courseProvider.checkModuleCompletion(this.courseId, this.module.completiondata);
         }
 
         // If the sync call isn't rejected it means the sync was successful.
@@ -455,7 +460,7 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * Perform the invalidate content function.
      *
-     * @return {Promise<any>} Resolved when done.
+     * @return Resolved when done.
      */
     protected invalidateContent(): Promise<any> {
         const promises = [];
@@ -478,13 +483,13 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * Compares sync event data with current data to check if refresh content is needed.
      *
-     * @param {any} syncEventData Data receiven on sync observer.
-     * @return {boolean} True if refresh is needed, false otherwise.
+     * @param syncEventData Data receiven on sync observer.
+     * @return True if refresh is needed, false otherwise.
      */
     protected isRefreshSyncNeeded(syncEventData: any): boolean {
         if (syncEventData.attemptFinished) {
             // An attempt was finished, check completion status.
-            this.courseProvider.checkModuleCompletion(this.courseId, this.module.completionstatus);
+            this.courseProvider.checkModuleCompletion(this.courseId, this.module.completiondata);
         }
 
         if (this.quizData && syncEventData.quizId == this.quizData.id) {
@@ -506,17 +511,23 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * Displays some data based on the current status.
      *
-     * @param {string} status The current status.
-     * @param {string} [previousStatus] The previous status. If not defined, there is no previous status.
+     * @param status The current status.
+     * @param previousStatus The previous status. If not defined, there is no previous status.
      */
     protected showStatus(status: string, previousStatus?: string): void {
         this.showStatusSpinner = status == CoreConstants.DOWNLOADING;
+
+        if (status == CoreConstants.DOWNLOADED && previousStatus == CoreConstants.DOWNLOADING) {
+            // Quiz downloaded now, maybe a new attempt was created. Load content again.
+            this.loaded = false;
+            this.loadContent();
+        }
     }
 
     /**
      * Performs the sync of the activity.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected sync(): Promise<any> {
         return this.quizSync.syncQuiz(this.quizData, true);
@@ -525,8 +536,8 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * Treat user attempts.
      *
-     * @param {any} attempts The attempts to treat.
-     * @return {Promise<void>} Promise resolved when done.
+     * @param attempts The attempts to treat.
+     * @return Promise resolved when done.
      */
     protected treatAttempts(attempts: any): Promise<any> {
         if (!attempts || !attempts.length) {
@@ -550,12 +561,12 @@ export class AddonModQuizIndexComponent extends CoreCourseModuleMainActivityComp
         promises.push(this.quizProvider.loadFinishedOfflineData(attempts));
 
         // Get combined review options.
-        promises.push(this.quizProvider.getCombinedReviewOptions(this.quizData.id).then((result) => {
+        promises.push(this.quizProvider.getCombinedReviewOptions(this.quizData.id, {cmId: this.module.id}).then((result) => {
             this.options = result;
         }));
 
         // Get best grade.
-        promises.push(this.quizProvider.getUserBestGrade(this.quizData.id).then((best) => {
+        promises.push(this.quizProvider.getUserBestGrade(this.quizData.id, {cmId: this.module.id}).then((best) => {
             this.bestGrade = best;
 
             // Get gradebook grade.

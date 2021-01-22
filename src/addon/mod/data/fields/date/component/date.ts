@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 // limitations under the License.
 import { Component } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
+import { TranslateService } from '@ngx-translate/core';
 import { CoreTimeUtilsProvider } from '@providers/utils/time';
 import { AddonModDataFieldPluginComponent } from '../../../classes/field-plugin-component';
 
@@ -27,7 +28,7 @@ export class AddonModDataFieldDateComponent extends AddonModDataFieldPluginCompo
 
     format: string;
 
-    constructor(protected fb: FormBuilder, protected timeUtils: CoreTimeUtilsProvider) {
+    constructor(protected fb: FormBuilder, protected timeUtils: CoreTimeUtilsProvider, protected translate: TranslateService) {
         super(fb);
     }
 
@@ -40,17 +41,20 @@ export class AddonModDataFieldDateComponent extends AddonModDataFieldPluginCompo
         }
 
         let val;
-        this.format = this.timeUtils.getLocalizedDateFormat('LL');
+
+        // Calculate format to use.
+        this.format = this.timeUtils.fixFormatForDatetime(this.timeUtils.convertPHPToMoment(
+                this.translate.instant('core.strftimedate')));
 
         if (this.mode == 'search') {
             this.addControl('f_' + this.field.id + '_z');
             val = this.search['f_' + this.field.id + '_y'] ? new Date(this.search['f_' + this.field.id + '_y'] + '-' +
                 this.search['f_' + this.field.id + '_m'] + '-' + this.search['f_' + this.field.id + '_d']) : new Date();
 
-            this.search['f_' + this.field.id] = val.toISOString();
+            this.search['f_' + this.field.id] = this.timeUtils.toDatetimeFormat(val.getTime());
         } else {
             val = this.value && this.value.content ? new Date(parseInt(this.value.content, 10) * 1000) : new Date();
-            val = val.toISOString();
+            val = this.timeUtils.toDatetimeFormat(val.getTime());
         }
 
         this.addControl('f_' + this.field.id, val);

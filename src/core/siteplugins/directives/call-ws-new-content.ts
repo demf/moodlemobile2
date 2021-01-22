@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -61,6 +61,8 @@ export class CoreSitePluginsCallWSNewContentDirective extends CoreSitePluginsCal
     @Input() useOtherData: any[]; // Whether to include other data in the args. @see CoreSitePluginsProvider.loadOtherDataInArgs.
     @Input() jsData: any; // JS variables to pass to the new page so they can be used in the template or JS.
                           // If true is supplied instead of an object, all initial variables from current page will be copied.
+    @Input() newContentPreSets: any; // The preSets for the WS call of the new content.
+    @Input() ptrEnabled: boolean | string; // Whether PTR should be enabled in the new page. Defaults to true.
 
     constructor(element: ElementRef, translate: TranslateService, domUtils: CoreDomUtilsProvider,
             sitePluginsProvider: CoreSitePluginsProvider, @Optional() parentContent: CoreSitePluginsPluginContentComponent,
@@ -71,7 +73,7 @@ export class CoreSitePluginsCallWSNewContentDirective extends CoreSitePluginsCal
     /**
      * Function called when the WS call is successful.
      *
-     * @param {any} result Result of the WS call.
+     * @param result Result of the WS call.
      */
     protected wsCallSuccess(result: any): void {
         let args = this.args || {};
@@ -86,7 +88,7 @@ export class CoreSitePluginsCallWSNewContentDirective extends CoreSitePluginsCal
         if (this.utils.isTrueOrOne(this.samePage)) {
             // Update the parent content (if it exists).
             if (this.parentContent) {
-                this.parentContent.updateContent(args, this.component, this.method, this.jsData);
+                this.parentContent.updateContent(args, this.component, this.method, this.jsData, this.newContentPreSets);
             }
         } else {
             let jsData = this.jsData;
@@ -95,12 +97,14 @@ export class CoreSitePluginsCallWSNewContentDirective extends CoreSitePluginsCal
             }
 
             this.navCtrl.push('CoreSitePluginsPluginPage', {
-                title: this.title,
+                title: this.title || (this.parentContent && this.parentContent.pageTitle),
                 component: this.component || (this.parentContent && this.parentContent.component),
                 method: this.method || (this.parentContent && this.parentContent.method),
                 args: args,
                 initResult: this.parentContent && this.parentContent.initResult,
-                jsData: jsData
+                jsData: jsData,
+                preSets: this.newContentPreSets,
+                ptrEnabled: this.ptrEnabled,
             });
         }
     }

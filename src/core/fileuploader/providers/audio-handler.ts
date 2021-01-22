@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,7 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
-import { Platform } from 'ionic-angular';
-import { CoreAppProvider } from '@providers/app';
+import { CoreApp } from '@providers/app';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreFileUploaderHandler, CoreFileUploaderHandlerData } from './delegate';
 import { CoreFileUploaderHelperProvider } from './helper';
@@ -26,29 +25,31 @@ export class CoreFileUploaderAudioHandler implements CoreFileUploaderHandler {
     name = 'CoreFileUploaderAudio';
     priority = 1600;
 
-    constructor(private appProvider: CoreAppProvider, private utils: CoreUtilsProvider, private platform: Platform,
-            private uploaderHelper: CoreFileUploaderHelperProvider) { }
+    constructor(
+            private utils: CoreUtilsProvider,
+            private uploaderHelper: CoreFileUploaderHelperProvider
+            ) { }
 
     /**
      * Whether or not the handler is enabled on a site level.
      *
-     * @return {boolean|Promise<boolean>} True or promise resolved with true if enabled.
+     * @return True or promise resolved with true if enabled.
      */
     isEnabled(): boolean | Promise<boolean> {
-        return this.appProvider.isMobile() || (this.appProvider.canGetUserMedia() && this.appProvider.canRecordMedia());
+        return CoreApp.instance.isMobile() || (CoreApp.instance.canGetUserMedia() && CoreApp.instance.canRecordMedia());
     }
 
     /**
      * Given a list of mimetypes, return the ones that are supported by the handler.
      *
-     * @param {string[]} [mimetypes] List of mimetypes.
-     * @return {string[]} Supported mimetypes.
+     * @param mimetypes List of mimetypes.
+     * @return Supported mimetypes.
      */
     getSupportedMimetypes(mimetypes: string[]): string[] {
-        if (this.platform.is('ios')) {
+        if (CoreApp.instance.isIOS()) {
             // In iOS it's recorded as WAV.
             return this.utils.filterByRegexp(mimetypes, /^audio\/wav$/);
-        } else if (this.platform.is('android')) {
+        } else if (CoreApp.instance.isAndroid()) {
             // In Android we don't know the format the audio will be recorded, so accept any audio mimetype.
             return this.utils.filterByRegexp(mimetypes, /^audio\//);
         } else {
@@ -69,7 +70,7 @@ export class CoreFileUploaderAudioHandler implements CoreFileUploaderHandler {
     /**
      * Get the data to display the handler.
      *
-     * @return {CoreFileUploaderHandlerData} Data.
+     * @return Data.
      */
     getData(): CoreFileUploaderHandlerData {
         return {

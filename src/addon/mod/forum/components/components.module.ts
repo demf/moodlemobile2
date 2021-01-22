@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,13 +20,20 @@ import { CoreComponentsModule } from '@components/components.module';
 import { CoreDirectivesModule } from '@directives/directives.module';
 import { CorePipesModule } from '@pipes/pipes.module';
 import { CoreCourseComponentsModule } from '@core/course/components/components.module';
+import { CoreRatingComponentsModule } from '@core/rating/components/components.module';
+import { CoreTagComponentsModule } from '@core/tag/components/components.module';
 import { AddonModForumIndexComponent } from './index/index';
 import { AddonModForumPostComponent } from './post/post';
+import { AddonForumDiscussionOptionsMenuComponent } from './discussion-options-menu/discussion-options-menu';
+import { AddonForumPostOptionsMenuComponent } from './post-options-menu/post-options-menu';
+import { CoreEditorComponentsModule } from '@core/editor/components/components.module';
 
 @NgModule({
     declarations: [
         AddonModForumIndexComponent,
-        AddonModForumPostComponent
+        AddonModForumPostComponent,
+        AddonForumDiscussionOptionsMenuComponent,
+        AddonForumPostOptionsMenuComponent
     ],
     imports: [
         CommonModule,
@@ -35,16 +42,23 @@ import { AddonModForumPostComponent } from './post/post';
         CoreComponentsModule,
         CoreDirectivesModule,
         CorePipesModule,
-        CoreCourseComponentsModule
+        CoreCourseComponentsModule,
+        CoreRatingComponentsModule,
+        CoreTagComponentsModule,
+        CoreEditorComponentsModule,
     ],
     providers: [
     ],
     exports: [
         AddonModForumIndexComponent,
-        AddonModForumPostComponent
+        AddonModForumPostComponent,
+        AddonForumDiscussionOptionsMenuComponent,
+        AddonForumPostOptionsMenuComponent
     ],
     entryComponents: [
-        AddonModForumIndexComponent
+        AddonModForumIndexComponent,
+        AddonForumDiscussionOptionsMenuComponent,
+        AddonForumPostOptionsMenuComponent
     ]
 })
 export class AddonModForumComponentsModule {}

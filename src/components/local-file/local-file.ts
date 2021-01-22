@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Input, Output, OnInit, EventEmitter } from '@angular/core';
-import { TranslateService } from '@ngx-translate/core';
+import { Component, Input, Output, OnInit, EventEmitter, ViewChild, ElementRef } from '@angular/core';
+import { CoreEventsProvider } from '@providers/events';
 import { CoreFileProvider } from '@providers/file';
+import { CoreFileHelper } from '@providers/file-helper';
+import { CoreSitesProvider } from '@providers/sites';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreMimetypeUtilsProvider } from '@providers/utils/mimetype';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
+import { CoreTimeUtilsProvider } from '@providers/utils/time';
 import { CoreUtilsProvider } from '@providers/utils/utils';
-import * as moment from 'moment';
 
 /**
  * Component to handle a local file. Only files inside the app folder can be managed.
@@ -39,6 +41,8 @@ export class CoreLocalFileComponent implements OnInit {
     @Output() onRename?: EventEmitter<any>; // Will notify when the file is renamed. Receives the FileEntry as the param.
     @Output() onClick?: EventEmitter<void>; // Will notify when the file is clicked. Only if overrideClick is true.
 
+    @ViewChild('nameForm') formElement: ElementRef;
+
     fileName: string;
     fileIcon: string;
     fileExtension: string;
@@ -48,9 +52,14 @@ export class CoreLocalFileComponent implements OnInit {
     editMode: boolean;
     relativePath: string;
 
-    constructor(private mimeUtils: CoreMimetypeUtilsProvider, private utils: CoreUtilsProvider, private translate: TranslateService,
-            private textUtils: CoreTextUtilsProvider, private fileProvider: CoreFileProvider,
-            private domUtils: CoreDomUtilsProvider) {
+    constructor(protected mimeUtils: CoreMimetypeUtilsProvider,
+            protected utils: CoreUtilsProvider,
+            protected textUtils: CoreTextUtilsProvider,
+            protected fileProvider: CoreFileProvider,
+            protected domUtils: CoreDomUtilsProvider,
+            protected timeUtils: CoreTimeUtilsProvider,
+            protected sitesProvider: CoreSitesProvider,
+            protected eventsProvider: CoreEventsProvider) {
         this.onDelete = new EventEmitter();
         this.onRename = new EventEmitter();
         this.onClick = new EventEmitter();
@@ -62,13 +71,6 @@ export class CoreLocalFileComponent implements OnInit {
     ngOnInit(): void {
         this.manage = this.utils.isTrueOrOne(this.manage);
 
-        // Let's calculate the relative path for the file.
-        this.relativePath = this.fileProvider.removeBasePath(this.file.toURL());
-        if (!this.relativePath) {
-            // Didn't find basePath, use fullPath but if the user tries to manage the file it'll probably fail.
-            this.relativePath = this.file.fullPath;
-        }
-
         this.loadFileBasicData();
 
         // Get the size and timemodified.
@@ -77,7 +79,7 @@ export class CoreLocalFileComponent implements OnInit {
                 this.size = this.textUtils.bytesToSize(metadata.size, 2);
             }
 
-            this.timemodified = moment(metadata.modificationTime).format('LLL');
+            this.timemodified = this.timeUtils.userDate(metadata.modificationTime.getTime(), 'core.strftimedatetimeshort');
         });
     }
 
@@ -88,14 +90,21 @@ export class CoreLocalFileComponent implements OnInit {
         this.fileName = this.file.name;
         this.fileIcon = this.mimeUtils.getFileIcon(this.file.name);
         this.fileExtension = this.mimeUtils.getFileExtension(this.file.name);
+
+        // Let's calculate the relative path for the file.
+        this.relativePath = this.fileProvider.removeBasePath(this.file.toURL());
+        if (!this.relativePath) {
+            // Didn't find basePath, use fullPath but if the user tries to manage the file it'll probably fail.
+            this.relativePath = this.file.fullPath;
+        }
     }
 
     /**
      * File clicked.
      *
-     * @param {Event} e Click event.
+     * @param e Click event.
      */
-    fileClicked(e: Event): void {
+    async fileClicked(e: Event): Promise<void> {
         if (this.editMode) {
             return;
         }
@@ -106,6 +115,14 @@ export class CoreLocalFileComponent implements OnInit {
         if (this.utils.isTrueOrOne(this.overrideClick) && this.onClick.observers.length) {
             this.onClick.emit();
         } else {
+            if (!CoreFileHelper.instance.isOpenableInApp(this.file)) {
+                try {
+                    await CoreFileHelper.instance.showConfirmOpenUnsupportedFile();
+                } catch (error) {
+                    return; // Cancelled, stop.
+                }
+            }
+
             this.utils.openFile(this.file.toURL());
         }
     }
@@ -113,7 +130,7 @@ export class CoreLocalFileComponent implements OnInit {
     /**
      * Activate the edit mode.
      *
-     * @param {Event} e Click event.
+     * @param e Click event.
      */
     activateEdit(e: Event): void {
         e.preventDefault();
@@ -125,8 +142,8 @@ export class CoreLocalFileComponent implements OnInit {
     /**
      * Rename the file.
      *
-     * @param {string} newName New name.
-     * @param {Event}  e       Click event.
+     * @param newName New name.
+     * @param e Click event.
      */
     changeName(newName: string, e: Event): void {
         e.preventDefault();
@@ -135,6 +152,7 @@ export class CoreLocalFileComponent implements OnInit {
         if (newName == this.file.name) {
             // Name hasn't changed, stop.
             this.editMode = false;
+            this.domUtils.triggerFormCancelledEvent(this.formElement, this.sitesProvider.getCurrentSiteId());
 
             return;
         }
@@ -150,6 +168,9 @@ export class CoreLocalFileComponent implements OnInit {
         }).catch(() => {
             // File doesn't exist, move it.
             return this.fileProvider.moveFile(this.relativePath, newPath).then((fileEntry) => {
+
+                this.domUtils.triggerFormSubmittedEvent(this.formElement, false, this.sitesProvider.getCurrentSiteId());
+
                 this.editMode = false;
                 this.file = fileEntry;
                 this.loadFileBasicData();
@@ -165,15 +186,15 @@ export class CoreLocalFileComponent implements OnInit {
     /**
      * Delete the file.
      *
-     * @param {Event} e Click event.
+     * @param e Click event.
      */
     deleteFile(e: Event): void {
         e.preventDefault();
         e.stopPropagation();
 
         // Ask confirmation.
-        this.domUtils.showConfirm(this.translate.instant('core.confirmdeletefile')).then(() => {
-            const modal = this.domUtils.showModalLoading();
+        this.domUtils.showDeleteConfirm('core.confirmdeletefile').then(() => {
+            const modal = this.domUtils.showModalLoading('core.deleting', true);
 
             return this.fileProvider.removeFile(this.relativePath).then(() => {
                 this.onDelete.emit();

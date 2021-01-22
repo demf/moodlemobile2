@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
-import { Http } from '@angular/http';
-import { HttpClient } from '@angular/common/http';
+import { Platform } from 'ionic-angular';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { TranslateService } from '@ngx-translate/core';
 import { FileTransfer, FileUploadOptions } from '@ionic-native/file-transfer';
 import { CoreAppProvider } from './app';
@@ -25,6 +25,9 @@ import { CoreTextUtilsProvider } from './utils/text';
 import { CoreConstants } from '@core/constants';
 import { Md5 } from 'ts-md5/dist/md5';
 import { CoreInterceptor } from '@classes/interceptor';
+import { makeSingleton } from '@singletons/core.singletons';
+import { Observable } from 'rxjs/Observable';
+import { CoreNativeToAngularHttpResponse } from '@classes/native-to-angular-http';
 
 /**
  * PreSets accepted by the WS call.
@@ -32,34 +35,55 @@ import { CoreInterceptor } from '@classes/interceptor';
 export interface CoreWSPreSets {
     /**
      * The site URL.
-     * @type {string}
      */
     siteUrl: string;
 
     /**
      * The Webservice token.
-     * @type {string}
      */
     wsToken: string;
 
     /**
      * Defaults to true. Set to false when the expected response is null.
-     * @type {boolean}
      */
     responseExpected?: boolean;
 
     /**
      * Defaults to 'object'. Use it when you expect a type that's not an object|array.
-     * @type {string}
      */
     typeExpected?: string;
 
     /**
      * Defaults to false. Clean multibyte Unicode chars from data.
-     * @type {string}
      */
     cleanUnicode?: boolean;
+
+    /**
+     * Whether to split a request if it has too many parameters. Sending too many parameters to the site
+     * can cause the request to fail (see PHP's max_input_vars).
+     */
+    splitRequest?: CoreWSPreSetsSplitRequest;
 }
+
+/**
+ * Options to split a request.
+ */
+export type CoreWSPreSetsSplitRequest = {
+    /**
+     * Name of the parameter used to split the request if too big. Must be an array parameter.
+     */
+    param: string;
+
+    /**
+     * Max number of entries sent per request.
+     */
+    maxLength: number;
+
+    /**
+     * Callback to combine the results. If not supplied, arrays in the result will be concatenated.
+     */
+    combineCallback?: (previousValue: any, currentValue: any, currentIndex: number, array: any[]) => any;
+};
 
 /**
  * PreSets accepted by AJAX WS calls.
@@ -67,56 +91,79 @@ export interface CoreWSPreSets {
 export interface CoreWSAjaxPreSets {
     /**
      * The site URL.
-     * @type {string}
      */
     siteUrl: string;
 
     /**
      * Defaults to true. Set to false when the expected response is null.
-     * @type {boolean}
      */
     responseExpected?: boolean;
+
+    /**
+     * Whether to use the no-login endpoint instead of the normal one. Use it for requests that don't require authentication.
+     */
+    noLogin?: boolean;
+
+    /**
+     * Whether to send the parameters via GET. Only if noLogin is true.
+     */
+    useGet?: boolean;
 }
 
 /**
- * Error returned by a WS call.
+ * Options for HTTP requests.
  */
-export interface CoreWSError {
+export type HttpRequestOptions = {
     /**
-     * The error message.
-     * @type {string}
+     * The HTTP method.
      */
-    message: string;
+    method: string;
 
     /**
-     * Name of the exception. Undefined for local errors (fake WS errors).
-     * @type {string}
+     * Payload to send to the server. Only applicable on post, put or patch methods.
      */
-    exception?: string;
+    data?: any;
 
     /**
-     * The error code. Undefined for local errors (fake WS errors).
-     * @type {string}
+     * Query params to be appended to the URL (only applicable on get, head, delete, upload or download methods).
      */
-    errorcode?: string;
-}
-
-/**
- * File upload options.
- */
-export interface CoreWSFileUploadOptions extends FileUploadOptions {
-    /**
-     * The file area where to put the file. By default, 'draft'.
-     * @type {string}
-     */
-    fileArea?: string;
+    params?: any;
 
     /**
-     * Item ID of the area where to put the file. By default, 0.
-     * @type {number}
+     * Response type. Defaults to json.
      */
-    itemId?: number;
-}
+    responseType?: 'json' | 'text' | 'arraybuffer' | 'blob';
+
+    /**
+     * Timeout for the request in seconds. If undefined, the default value will be used. If null, no timeout.
+     */
+    timeout?: number | null;
+
+    /**
+     * Serializer to use. Defaults to 'urlencoded'. Only for mobile environments.
+     */
+    serializer?: string;
+
+    /**
+     * Whether to follow redirects. Defaults to true. Only for mobile environments.
+     */
+    followRedirect?: boolean;
+
+    /**
+     * Headers. Only for mobile environments.
+     */
+    headers?: {[name: string]: string};
+
+    /**
+     * File paths to use for upload or download. Only for mobile environments.
+     */
+    filePath?: string;
+
+    /**
+     * Name to use during upload. Only for mobile environments.
+     */
+    name?: string;
+};
 
 /**
  * This service allows performing WS calls and download/upload files.
@@ -129,22 +176,33 @@ export class CoreWSProvider {
     protected retryCalls = [];
     protected retryTimeout = 0;
 
-    constructor(private http: HttpClient, private translate: TranslateService, private appProvider: CoreAppProvider,
-            private textUtils: CoreTextUtilsProvider, logger: CoreLoggerProvider,
-            private fileProvider: CoreFileProvider, private fileTransfer: FileTransfer, private commonHttp: Http,
-            private mimeUtils: CoreMimetypeUtilsProvider) {
+    constructor(protected http: HttpClient,
+            protected translate: TranslateService,
+            protected appProvider: CoreAppProvider,
+            protected textUtils: CoreTextUtilsProvider,
+            protected fileProvider: CoreFileProvider,
+            protected fileTransfer: FileTransfer,
+            protected mimeUtils: CoreMimetypeUtilsProvider,
+            logger: CoreLoggerProvider,
+            platform: Platform) {
         this.logger = logger.getInstance('CoreWSProvider');
+
+        platform.ready().then(() => {
+            if (this.appProvider.isIOS()) {
+                (<any> cordova).plugin.http.setHeader('User-Agent', navigator.userAgent);
+            }
+        });
     }
 
     /**
      * Adds the call data to an special queue to be processed when retrying.
      *
-     * @param {string} method The WebService method to be called.
-     * @param {string} siteUrl Complete site url to perform the call.
-     * @param {any} ajaxData Arguments to pass to the method.
-     * @param {CoreWSPreSets} preSets Extra settings and information.
-     * @return {Promise<any>} Deferred promise resolved with the response data in success and rejected with the error message
-     *                        if it fails.
+     * @param method The WebService method to be called.
+     * @param siteUrl Complete site url to perform the call.
+     * @param ajaxData Arguments to pass to the method.
+     * @param preSets Extra settings and information.
+     * @return Deferred promise resolved with the response data in success and rejected with the error message
+     *         if it fails.
      */
     protected addToRetryQueue(method: string, siteUrl: string, ajaxData: any, preSets: CoreWSPreSets): Promise<any> {
         const call: any = {
@@ -168,10 +226,10 @@ export class CoreWSProvider {
     /**
      * A wrapper function for a moodle WebService call.
      *
-     * @param {string} method The WebService method to be called.
-     * @param {any} data Arguments to pass to the method. It's recommended to call convertValuesToString before passing the data.
-     * @param {CoreWSPreSets} preSets Extra settings and information.
-     * @return {Promise<any>} Promise resolved with the response data in success and rejected if it fails.
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method. It's recommended to call convertValuesToString before passing the data.
+     * @param preSets Extra settings and information.
+     * @return Promise resolved with the response data in success and rejected if it fails.
      */
     call(method: string, data: any, preSets: CoreWSPreSets): Promise<any> {
 
@@ -193,130 +251,95 @@ export class CoreWSProvider {
         data.wstoken = preSets.wsToken;
         siteUrl = preSets.siteUrl + '/webservice/rest/server.php?moodlewsrestformat=json';
 
-        let promise = this.getPromiseHttp('post', preSets.siteUrl, data);
+        // There are some ongoing retry calls, wait for timeout.
+        if (this.retryCalls.length > 0) {
+            this.logger.warn('Calls locked, trying later...');
+
+            return this.addToRetryQueue(method, siteUrl, data, preSets);
+        } else {
+            return this.performPost(method, siteUrl, data, preSets);
+        }
+    }
+
+    /**
+     * Call a Moodle WS using the AJAX API. Please use it if the WS layer is not an option.
+     * It uses a cache to prevent duplicate requests.
+     *
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra settings and information. Only some
+     * @return Promise resolved with the response data in success and rejected with an object containing:
+     *         - error: Error message.
+     *         - errorcode: Error code returned by the site (if any).
+     *         - available: 0 if unknown, 1 if available, -1 if not available.
+     */
+    callAjax(method: string, data: any, preSets: CoreWSAjaxPreSets): Promise<any> {
+        const cacheParams = {
+            methodname: method,
+            args: data,
+        };
+
+        let promise = this.getPromiseHttp('ajax', preSets.siteUrl, cacheParams);
 
         if (!promise) {
-            // There are some ongoing retry calls, wait for timeout.
-            if (this.retryCalls.length > 0) {
-                this.logger.warn('Calls locked, trying later...');
-                promise = this.addToRetryQueue(method, siteUrl, data, preSets);
-            } else {
-                promise = this.performPost(method, siteUrl, data, preSets);
-            }
+            promise = this.performAjax(method, data, preSets);
+            promise = this.setPromiseHttp(promise, 'ajax', preSets.siteUrl, cacheParams);
         }
 
         return promise;
     }
 
     /**
-     * Call a Moodle WS using the AJAX API. Please use it if the WS layer is not an option.
-     *
-     * @param {string} method The WebService method to be called.
-     * @param {any} data Arguments to pass to the method.
-     * @param {CoreWSAjaxPreSets} preSets Extra settings and information. Only some
-     * @return {Promise<any>} Promise resolved with the response data in success and rejected with an object containing:
-     *                                 - error: Error message.
-     *                                 - errorcode: Error code returned by the site (if any).
-     *                                 - available: 0 if unknown, 1 if available, -1 if not available.
-     */
-    callAjax(method: string, data: any, preSets: CoreWSAjaxPreSets): Promise<any> {
-        let siteUrl,
-            ajaxData;
-
-        if (typeof preSets.siteUrl == 'undefined') {
-            return rejectWithError(this.translate.instant('core.unexpectederror'));
-        } else if (!this.appProvider.isOnline()) {
-            return rejectWithError(this.translate.instant('core.networkerrormsg'));
-        }
-
-        if (typeof preSets.responseExpected == 'undefined') {
-            preSets.responseExpected = true;
-        }
-
-        ajaxData = [{
-            index: 0,
-            methodname: method,
-            args: this.convertValuesToString(data)
-        }];
-
-        siteUrl = preSets.siteUrl + '/lib/ajax/service.php';
-
-        const promise = this.http.post(siteUrl, JSON.stringify(ajaxData)).timeout(CoreConstants.WS_TIMEOUT).toPromise();
-
-        return promise.then((data: any) => {
-            // Some moodle web services return null.
-            // If the responseExpected value is set then so long as no data is returned, we create a blank object.
-            if (!data && !preSets.responseExpected) {
-                data = [{}];
-            }
-
-            // Check if error. Ajax layer should always return an object (if error) or an array (if success).
-            if (!data || typeof data != 'object') {
-                return rejectWithError(this.translate.instant('core.serverconnection'));
-            } else if (data.error) {
-                return rejectWithError(data.error, data.errorcode);
-            }
-
-            // Get the first response since only one request was done.
-            data = data[0];
-
-            if (data.error) {
-                return rejectWithError(data.exception.message, data.exception.errorcode);
-            }
-
-            return data.data;
-        }, (data) => {
-            const available = data.status == 404 ? -1 : 0;
-
-            return rejectWithError(this.translate.instant('core.serverconnection'), '', available);
-        });
-
-        // Convenience function to return an error.
-        function rejectWithError(message: string, code?: string, available?: number): Promise<never> {
-            if (typeof available == 'undefined') {
-                if (code) {
-                    available = code == 'invalidrecord' ? -1 : 1;
-                } else {
-                    available = 0;
-                }
-            }
-
-            return Promise.reject({
-                error: message,
-                errorcode: code,
-                available: available
-            });
-        }
-    }
-
-    /**
      * Converts an objects values to strings where appropriate.
-     * Arrays (associative or otherwise) will be maintained.
+     * Arrays (associative or otherwise) will be maintained, null values will be removed.
      *
-     * @param {object} data The data that needs all the non-object values set to strings.
-     * @param {boolean} [stripUnicode] If Unicode long chars need to be stripped.
-     * @return {object} The cleaned object, with multilevel array and objects preserved.
+     * @param data The data that needs all the non-object values set to strings.
+     * @param stripUnicode If Unicode long chars need to be stripped.
+     * @return The cleaned object or null if some strings becomes empty after stripping Unicode.
      */
-    convertValuesToString(data: object, stripUnicode?: boolean): object {
-        let result;
-        if (!Array.isArray(data) && typeof data == 'object') {
-            result = {};
-        } else {
-            result = [];
-        }
+    convertValuesToString(data: any, stripUnicode?: boolean): any {
+        const result: any = Array.isArray(data) ? [] : {};
 
-        for (const el in data) {
-            if (typeof data[el] == 'object') {
-                result[el] = this.convertValuesToString(data[el], stripUnicode);
-            } else {
-                if (typeof data[el] == 'string') {
-                    result[el] = stripUnicode ? this.textUtils.stripUnicode(data[el]) : data[el];
-                    if (stripUnicode && data[el] != result[el] && result[el].trim().length == 0) {
-                        throw new Error();
-                    }
-                } else {
-                    result[el] = data[el] + '';
+        for (const key in data) {
+            let value = data[key];
+
+            if (value == null) {
+                // Skip null or undefined value.
+                continue;
+            } else if (typeof value == 'object') {
+                // Object or array.
+                value = this.convertValuesToString(value, stripUnicode);
+                if (value == null) {
+                    return null;
                 }
+            } else if (typeof value == 'string') {
+                if (stripUnicode) {
+                    const stripped = this.textUtils.stripUnicode(value);
+                    if (stripped != value && stripped.trim().length == 0) {
+                        return null;
+                    }
+                    value = stripped;
+                }
+            } else if (typeof value == 'boolean') {
+                /* Moodle does not allow "true" or "false" in WS parameters, only in POST parameters.
+                   We've been using "true" and "false" for WS settings "filter" and "fileurl",
+                   we keep it this way to avoid changing cache keys. */
+                if (key == 'moodlewssettingfilter' || key == 'moodlewssettingfileurl') {
+                    value = value ? 'true' : 'false';
+                } else {
+                    value = value ? '1' : '0';
+                }
+            } else if (typeof value == 'number') {
+                value = String(value);
+            } else {
+                // Unknown type.
+                continue;
+            }
+
+            if (Array.isArray(result)) {
+                result.push(value);
+            } else {
+                result[key] = value;
             }
         }
 
@@ -326,13 +349,14 @@ export class CoreWSProvider {
     /**
      * Create a "fake" WS error for local errors.
      *
-     * @param {string} message The message to include in the error.
-     * @param {boolean} [needsTranslate] If the message needs to be translated.
-     * @return {CoreWSError} Fake WS error.
+     * @param message The message to include in the error.
+     * @param needsTranslate If the message needs to be translated.
+     * @param translateParams Translation params, if needed.
+     * @return Fake WS error.
      */
-    createFakeWSError(message: string, needsTranslate?: boolean): CoreWSError {
+    createFakeWSError(message: string, needsTranslate?: boolean, translateParams?: {}): CoreWSError {
         if (needsTranslate) {
-            message = this.translate.instant(message);
+            message = this.translate.instant(message, translateParams);
         }
 
         return {
@@ -343,11 +367,11 @@ export class CoreWSProvider {
     /**
      * Downloads a file from Moodle using Cordova File API.
      *
-     * @param {string} url Download url.
-     * @param {string} path Local path to store the file.
-     * @param {boolean} [addExtension] True if extension need to be added to the final path.
-     * @param {Function} [onProgress] Function to call on progress.
-     * @return {Promise<any>} Promise resolved with the downloaded file.
+     * @param url Download url.
+     * @param path Local path to store the file.
+     * @param addExtension True if extension need to be added to the final path.
+     * @param onProgress Function to call on progress.
+     * @return Promise resolved with the downloaded file.
      */
     downloadFile(url: string, path: string, addExtension?: boolean, onProgress?: (event: ProgressEvent) => any): Promise<any> {
         this.logger.debug('Downloading file', url, path, addExtension);
@@ -419,9 +443,9 @@ export class CoreWSProvider {
     /**
      * Get a promise from the cache.
      *
-     * @param {string} method Method of the HTTP request.
-     * @param {string} url Base URL of the HTTP request.
-     * @param {any} [params] Params of the HTTP request.
+     * @param method Method of the HTTP request.
+     * @param url Base URL of the HTTP request.
+     * @param params Params of the HTTP request.
      */
     protected getPromiseHttp(method: string, url: string, params?: any): any {
         const queueItemId = this.getQueueItemId(method, url, params);
@@ -435,17 +459,17 @@ export class CoreWSProvider {
     /**
      * Perform a HEAD request to get the mimetype of a remote file.
      *
-     * @param {string} url File URL.
-     * @param {boolean} [ignoreCache] True to ignore cache, false otherwise.
-     * @return {Promise<string>} Promise resolved with the mimetype or '' if failure.
+     * @param url File URL.
+     * @param ignoreCache True to ignore cache, false otherwise.
+     * @return Promise resolved with the mimetype or '' if failure.
      */
     getRemoteFileMimeType(url: string, ignoreCache?: boolean): Promise<string> {
         if (this.mimeTypeCache[url] && !ignoreCache) {
             return Promise.resolve(this.mimeTypeCache[url]);
         }
 
-        return this.performHead(url).then((data) => {
-            let mimeType = data.headers.get('Content-Type');
+        return this.performHead(url).then((response) => {
+            let mimeType = response.headers.get('Content-Type');
             if (mimeType) {
                 // Remove "parameters" like charset.
                 mimeType = mimeType.split(';')[0];
@@ -462,12 +486,12 @@ export class CoreWSProvider {
     /**
      * Perform a HEAD request to get the size of a remote file.
      *
-     * @param {string} url File URL.
-     * @return {Promise<number>} Promise resolved with the size or -1 if failure.
+     * @param url File URL.
+     * @return Promise resolved with the size or -1 if failure.
      */
     getRemoteFileSize(url: string): Promise<number> {
-        return this.performHead(url).then((data) => {
-            const size = parseInt(data.headers.get('Content-Length'), 10);
+        return this.performHead(url).then((response) => {
+            const size = parseInt(response.headers.get('Content-Length'), 10);
 
             if (size) {
                 return size;
@@ -481,12 +505,21 @@ export class CoreWSProvider {
     }
 
     /**
+     * Get a request timeout based on the network connection.
+     *
+     * @return Timeout in ms.
+     */
+    getRequestTimeout(): number {
+        return this.appProvider.isNetworkAccessLimited() ? CoreConstants.WS_TIMEOUT : CoreConstants.WS_TIMEOUT_WIFI;
+    }
+
+    /**
      * Get the unique queue item id of the cache for a HTTP request.
      *
-     * @param {string} method Method of the HTTP request.
-     * @param {string} url Base URL of the HTTP request.
-     * @param {object} [params] Params of the HTTP request.
-     * @return {string} Queue item ID.
+     * @param method Method of the HTTP request.
+     * @param url Base URL of the HTTP request.
+     * @param params Params of the HTTP request.
+     * @return Queue item ID.
      */
     protected getQueueItemId(method: string, url: string, params?: any): string {
         if (params) {
@@ -497,16 +530,117 @@ export class CoreWSProvider {
     }
 
     /**
+     * Call a Moodle WS using the AJAX API.
+     *
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra settings and information. Only some
+     * @return Promise resolved with the response data in success and rejected with an object containing:
+     *         - error: Error message.
+     *         - errorcode: Error code returned by the site (if any).
+     *         - available: 0 if unknown, 1 if available, -1 if not available.
+     */
+    protected performAjax(method: string, data: any, preSets: CoreWSAjaxPreSets): Promise<any> {
+
+        let promise;
+
+        if (typeof preSets.siteUrl == 'undefined') {
+            return rejectWithError(this.createFakeWSError('core.unexpectederror', true));
+        } else if (!this.appProvider.isOnline()) {
+            return rejectWithError(this.createFakeWSError('core.networkerrormsg', true));
+        }
+
+        if (typeof preSets.responseExpected == 'undefined') {
+            preSets.responseExpected = true;
+        }
+
+        const script = preSets.noLogin ? 'service-nologin.php' : 'service.php';
+        const ajaxData = [{
+            index: 0,
+            methodname: method,
+            args: this.convertValuesToString(data)
+        }];
+
+        // The info= parameter has no function. It is just to help with debugging.
+        // We call it info to match the parameter name use by Moodle's AMD ajax module.
+        let siteUrl = preSets.siteUrl + '/lib/ajax/' + script + '?info=' + method;
+
+        if (preSets.noLogin && preSets.useGet) {
+            // Send params using GET.
+            siteUrl += '&args=' + encodeURIComponent(JSON.stringify(ajaxData));
+
+            promise = this.sendHTTPRequest(siteUrl, {
+                method: 'get',
+            });
+        } else {
+            promise = this.sendHTTPRequest(siteUrl, {
+                method: 'post',
+                data: ajaxData,
+                serializer: 'json',
+            });
+        }
+
+        return promise.then((response: HttpResponse<any>) => {
+            let data = response.body;
+
+            // Some moodle web services return null.
+            // If the responseExpected value is set then so long as no data is returned, we create a blank object.
+            if (!data && !preSets.responseExpected) {
+                data = [{}];
+            }
+
+            // Check if error. Ajax layer should always return an object (if error) or an array (if success).
+            if (!data || typeof data != 'object') {
+                return rejectWithError(this.createFakeWSError('core.serverconnection', true));
+            } else if (data.error) {
+                return rejectWithError(data);
+            }
+
+            // Get the first response since only one request was done.
+            data = data[0];
+
+            if (data.error) {
+                return rejectWithError(data.exception);
+            }
+
+            return data.data;
+        }, (data) => {
+            const available = data.status == 404 ? -1 : 0;
+
+            return rejectWithError(this.createFakeWSError('core.serverconnection', true), available);
+        });
+
+        // Convenience function to return an error.
+        function rejectWithError(exception: any, available?: number): Promise<never> {
+            if (typeof available == 'undefined') {
+                if (exception.errorcode) {
+                    available = exception.errorcode == 'invalidrecord' ? -1 : 1;
+                } else {
+                    available = 0;
+                }
+            }
+
+            exception.available = available;
+
+            return Promise.reject(exception);
+        }
+    }
+
+    /**
      * Perform a HEAD request and save the promise while waiting to be resolved.
      *
-     * @param {string} url URL to perform the request.
-     * @return {Promise<any>} Promise resolved with the response.
+     * @param url URL to perform the request.
+     * @return Promise resolved with the response.
      */
-    performHead(url: string): Promise<any> {
+    performHead(url: string): Promise<HttpResponse<any>> {
         let promise = this.getPromiseHttp('head', url);
 
         if (!promise) {
-            promise = this.commonHttp.head(url).timeout(CoreConstants.WS_TIMEOUT).toPromise();
+            promise = this.sendHTTPRequest(url, {
+                method: 'head',
+                responseType: 'text',
+            });
+
             promise = this.setPromiseHttp(promise, 'head', url);
         }
 
@@ -514,13 +648,13 @@ export class CoreWSProvider {
     }
 
     /**
-     * Perform the post call and save the promise while waiting to be resolved.
+     * Perform the post call. It can be split into several requests.
      *
-     * @param {string} method The WebService method to be called.
-     * @param {string} siteUrl Complete site url to perform the call.
-     * @param {any} ajaxData Arguments to pass to the method.
-     * @param {CoreWSPreSets} preSets Extra settings and information.
-     * @return {Promise<any>} Promise resolved with the response data in success and rejected with CoreWSError if it fails.
+     * @param method The WebService method to be called.
+     * @param siteUrl Complete site url to perform the call.
+     * @param ajaxData Arguments to pass to the method.
+     * @param preSets Extra settings and information.
+     * @return Promise resolved with the response data in success and rejected with CoreWSError if it fails.
      */
     performPost(method: string, siteUrl: string, ajaxData: any, preSets: CoreWSPreSets): Promise<any> {
         const options = {};
@@ -531,10 +665,74 @@ export class CoreWSProvider {
             options['responseType'] = 'text';
         }
 
-        // Perform the post request.
-        let promise = this.http.post(siteUrl, ajaxData, options).timeout(CoreConstants.WS_TIMEOUT).toPromise();
+        if (!preSets.splitRequest || !ajaxData[preSets.splitRequest.param]) {
+            return this.performSinglePost(method, siteUrl, ajaxData, preSets, options);
+        }
 
-        promise = promise.then((data: any) => {
+        // Split the request into several requests if needed.
+        const promises: Promise<any>[] = [];
+
+        for (let i = 0; i < ajaxData[preSets.splitRequest.param].length; i += preSets.splitRequest.maxLength) {
+            // Limit the array sent.
+            const limitedData = Object.assign({}, ajaxData);
+            limitedData[preSets.splitRequest.param] =
+                ajaxData[preSets.splitRequest.param].slice(i, i + preSets.splitRequest.maxLength);
+
+            promises.push(this.performSinglePost(method, siteUrl, limitedData, preSets, options));
+        }
+
+        return Promise.all(promises).then((results) => {
+            // Combine the results.
+            const firstResult = results.shift();
+
+            if (preSets.splitRequest.combineCallback) {
+                return results.reduce(preSets.splitRequest.combineCallback, firstResult);
+            }
+
+            return results.reduce(this.combineObjectsArrays, firstResult);
+        });
+    }
+
+    /**
+     * Combine the arrays of two objects.
+     *
+     * @param object1 First object.
+     * @param object2 Second object.
+     * @return Combined object.
+     */
+    protected combineObjectsArrays(object1: any, object2: any): any {
+        for (const name in object2) {
+            if (Array.isArray(object2[name])) {
+                object1[name] = object1[name].concat(object2[name]);
+            }
+        }
+
+        return object1;
+    }
+
+    /**
+     * Perform a single post request.
+     *
+     * @param method The WebService method to be called.
+     * @param siteUrl Complete site url to perform the call.
+     * @param ajaxData Arguments to pass to the method.
+     * @param preSets Extra settings and information.
+     * @param options Request options.
+     * @return Promise resolved with the response data in success and rejected with CoreWSError if it fails.
+     */
+    protected performSinglePost(method: string, siteUrl: string, ajaxData: any, preSets: CoreWSPreSets, options: any)
+            : Promise<any> {
+
+        // We add the method name to the URL purely to help with debugging.
+        // This duplicates what is in the ajaxData, but that does no harm.
+        // POST variables take precedence over GET.
+        const requestUrl = siteUrl + '&wsfunction=' + method;
+
+        // Perform the post request.
+        const promise = this.http.post(requestUrl, ajaxData, options).timeout(this.getRequestTimeout()).toPromise();
+
+        return promise.then((data: any) => {
+
             // Some moodle web services return null.
             // If the responseExpected value is set to false, we create a blank object if the response is null.
             if (!data && !preSets.responseExpected) {
@@ -615,10 +813,6 @@ export class CoreWSProvider {
 
             return Promise.reject(this.createFakeWSError('core.serverconnection', true));
         });
-
-        promise = this.setPromiseHttp(promise, 'post', preSets.siteUrl, ajaxData);
-
-        return promise;
     }
 
     /**
@@ -641,11 +835,11 @@ export class CoreWSProvider {
     /**
      * Save promise on the cache.
      *
-     * @param {Promise<any>} promise Promise to be saved.
-     * @param {string} method Method of the HTTP request.
-     * @param {string} url Base URL of the HTTP request.
-     * @param {any} [params] Params of the HTTP request.
-     * @return {Promise<any>} The promise saved.
+     * @param promise Promise to be saved.
+     * @param method Method of the HTTP request.
+     * @param url Base URL of the HTTP request.
+     * @param params Params of the HTTP request.
+     * @return The promise saved.
      */
     protected setPromiseHttp(promise: Promise<any>, method: string, url: string, params?: any): Promise<any> {
         const queueItemId = this.getQueueItemId(method, url, params);
@@ -656,7 +850,7 @@ export class CoreWSProvider {
         // HTTP not finished, but we should delete the promise after timeout.
         timeout = setTimeout(() => {
             delete this.ongoingCalls[queueItemId];
-        }, CoreConstants.WS_TIMEOUT);
+        }, this.getRequestTimeout());
 
         // HTTP finished, delete from ongoing.
         return promise.finally(() => {
@@ -670,11 +864,11 @@ export class CoreWSProvider {
      * A wrapper function for a synchronous Moodle WebService call.
      * Warning: This function should only be used if synchronous is a must. It's recommended to use call.
      *
-     * @param {string} method The WebService method to be called.
-     * @param {any} data Arguments to pass to the method.
-     * @param {CoreWSPreSets} preSets Extra settings and information.
-     * @return {Promise} Promise resolved with the response data in success and rejected with the error message if it fails.
-     * @return {any} Request response. If the request fails, returns an object with 'error'=true and 'message' properties.
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra settings and information.
+     * @return Promise resolved with the response data in success and rejected with the error message if it fails.
+     * @return Request response. If the request fails, returns an object with 'error'=true and 'message' properties.
      */
     syncCall(method: string, data: any, preSets: CoreWSPreSets): any {
         const errorResponse = {
@@ -699,9 +893,8 @@ export class CoreWSProvider {
             preSets.responseExpected = true;
         }
 
-        try {
-            data = this.convertValuesToString(data, preSets.cleanUnicode);
-        } catch (e) {
+        data = this.convertValuesToString(data || {}, preSets.cleanUnicode);
+        if (data == null) {
             // Empty cleaned text found.
             errorResponse.message = this.translate.instant('core.unicodenotsupportedcleanerror');
 
@@ -764,11 +957,11 @@ export class CoreWSProvider {
     /*
      * Uploads a file.
      *
-     * @param {string} filePath File path.
-     * @param {CoreWSFileUploadOptions} options File upload options.
-     * @param {CoreWSPreSets} preSets Must contain siteUrl and wsToken.
-     * @param {Function} [onProgress] Function to call on progress.
-     * @return {Promise<any>} Promise resolved when uploaded.
+     * @param filePath File path.
+     * @param options File upload options.
+     * @param preSets Must contain siteUrl and wsToken.
+     * @param onProgress Function to call on progress.
+     * @return Promise resolved when uploaded.
      */
     uploadFile(filePath: string, options: CoreWSFileUploadOptions, preSets: CoreWSPreSets,
             onProgress?: (event: ProgressEvent) => any): Promise<any> {
@@ -800,7 +993,7 @@ export class CoreWSProvider {
 
         return transfer.upload(filePath, uploadUrl, options, true).then((success) => {
             const data = this.textUtils.parseJSON(success.response, null,
-                    this.logger.error.bind(this.logger, 'Error parsing response from upload'));
+                    this.logger.error.bind(this.logger, 'Error parsing response from upload', success.response));
             if (data === null) {
                 return Promise.reject(this.translate.instant('core.errorinvalidresponse'));
             }
@@ -831,4 +1024,236 @@ export class CoreWSProvider {
             return Promise.reject(this.translate.instant('core.errorinvalidresponse'));
         });
     }
+
+    /**
+     * Perform an HTTP request requesting for a text response.
+     *
+     * @param  url Url to get.
+     * @return Resolved with the text when done.
+     */
+    async getText(url: string): Promise<string> {
+        // Fetch the URL content.
+        const options: HttpRequestOptions = {
+            method: 'get',
+            responseType: 'text',
+        };
+
+        const response = await this.sendHTTPRequest(url, options);
+
+        const content = response.body;
+
+        if (typeof content !== 'string') {
+            throw 'Error reading content';
+        }
+
+        return content;
+    }
+
+    /**
+     * Send an HTTP request. In mobile devices it will use the cordova plugin.
+     *
+     * @param url URL of the request.
+     * @param options Options for the request.
+     * @return Promise resolved with the response.
+     */
+    async sendHTTPRequest(url: string, options: HttpRequestOptions): Promise<HttpResponse<any>> {
+
+        // Set default values.
+        options.responseType = options.responseType || 'json';
+        options.timeout = typeof options.timeout == 'undefined' ? this.getRequestTimeout() : options.timeout;
+
+        if (this.appProvider.isIOS()) {
+            // Use the cordova plugin.
+            if (url.indexOf('file://') === 0) {
+                // We cannot load local files using the http native plugin. Use file provider instead.
+                const format = options.responseType == 'json' ? CoreFileProvider.FORMATJSON : CoreFileProvider.FORMATTEXT;
+
+                const content = await this.fileProvider.readFile(url, format);
+
+                return new HttpResponse({
+                    body: content,
+                    headers: null,
+                    status: 200,
+                    statusText: 'OK',
+                    url: url
+                });
+            }
+
+            return new Promise<HttpResponse<any>>((resolve, reject): void => {
+                // We cannot use Ionic Native plugin because it doesn't have the sendRequest method.
+                (<any> cordova).plugin.http.sendRequest(url, options, (response) => {
+                    resolve(new CoreNativeToAngularHttpResponse(response));
+                }, reject);
+            });
+        } else {
+            let observable: Observable<any>;
+
+            // Use Angular's library.
+            switch (options.method) {
+                case 'get':
+                    observable = this.http.get(url, {
+                        headers: options.headers,
+                        params: options.params,
+                        observe: 'response',
+                        responseType: <any> options.responseType,
+                    });
+                    break;
+
+                case 'post':
+                    if (options.serializer == 'json') {
+                        options.data = JSON.stringify(options.data);
+                    }
+
+                    observable = this.http.post(url, options.data, {
+                        headers: options.headers,
+                        observe: 'response',
+                        responseType: <any> options.responseType,
+                    });
+                    break;
+
+                case 'head':
+                    observable = this.http.head(url, {
+                        headers: options.headers,
+                        observe: 'response',
+                        responseType: <any> options.responseType
+                    });
+                    break;
+
+                default:
+                    return Promise.reject('Method not implemented yet.');
+            }
+
+            if (options.timeout) {
+                observable = observable.timeout(options.timeout);
+            }
+
+            return observable.toPromise();
+        }
+    }
 }
+
+export class CoreWS extends makeSingleton(CoreWSProvider) {}
+
+/**
+ * Error returned by a WS call.
+ */
+export interface CoreWSError {
+    /**
+     * The error message.
+     */
+    message: string;
+
+    /**
+     * Name of the exception. Undefined for local errors (fake WS errors).
+     */
+    exception?: string;
+
+    /**
+     * The error code. Undefined for local errors (fake WS errors).
+     */
+    errorcode?: string;
+}
+
+/**
+ * File upload options.
+ */
+export interface CoreWSFileUploadOptions extends FileUploadOptions {
+    /**
+     * The file area where to put the file. By default, 'draft'.
+     */
+    fileArea?: string;
+
+    /**
+     * Item ID of the area where to put the file. By default, 0.
+     */
+    itemId?: number;
+}
+
+/**
+ * Structure of warnings returned by WS.
+ */
+export type CoreWSExternalWarning = {
+    /**
+     * Item.
+     */
+    item?: string;
+
+    /**
+     * Item id.
+     */
+    itemid?: number;
+
+    /**
+     * The warning code can be used by the client app to implement specific behaviour.
+     */
+    warningcode: string;
+
+    /**
+     * Untranslated english message to explain the warning.
+     */
+    message: string;
+
+};
+
+/**
+ * Structure of files returned by WS.
+ */
+export type CoreWSExternalFile = {
+    /**
+     * File name.
+     */
+    filename?: string;
+
+    /**
+     * File path.
+     */
+    filepath?: string;
+
+    /**
+     * File size.
+     */
+    filesize?: number;
+
+    /**
+     * Downloadable file url.
+     */
+    fileurl?: string;
+
+    /**
+     * Time modified.
+     */
+    timemodified?: number;
+
+    /**
+     * File mime type.
+     */
+    mimetype?: string;
+
+    /**
+     * Whether is an external file.
+     */
+    isexternalfile?: number;
+
+    /**
+     * The repository type for external files.
+     */
+    repositorytype?: string;
+
+};
+
+/**
+ * Data returned by date_exporter.
+ */
+export type CoreWSDate = {
+    seconds: number; // Seconds.
+    minutes: number; // Minutes.
+    hours: number; // Hours.
+    mday: number; // Mday.
+    wday: number; // Wday.
+    mon: number; // Mon.
+    year: number; // Year.
+    yday: number; // Yday.
+    weekday: string; // Weekday.
+    month: string; // Month.
+    timestamp: number; // Timestamp.
+};

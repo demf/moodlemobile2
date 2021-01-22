@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Directive, ElementRef, Input, Output, EventEmitter, OnChanges, SimpleChange, Optional } from '@angular/core';
+import {
+    Directive, ElementRef, Input, Output, EventEmitter, OnChanges, SimpleChange, Optional, ViewContainerRef
+} from '@angular/core';
 import { Platform, NavController, Content } from 'ionic-angular';
 import { TranslateService } from '@ngx-translate/core';
-import { CoreAppProvider } from '@providers/app';
 import { CoreEventsProvider } from '@providers/events';
 import { CoreFilepoolProvider } from '@providers/filepool';
 import { CoreLoggerProvider } from '@providers/logger';
@@ -30,14 +31,19 @@ import { CoreLinkDirective } from '../directives/link';
 import { CoreExternalContentDirective } from '../directives/external-content';
 import { CoreContentLinksHelperProvider } from '@core/contentlinks/providers/helper';
 import { CoreSplitViewComponent } from '@components/split-view/split-view';
+import { CoreFilterProvider, CoreFilterFilter, CoreFilterFormatTextOptions } from '@core/filter/providers/filter';
+import { CoreFilterHelperProvider } from '@core/filter/providers/helper';
+import { CoreFilterDelegate } from '@core/filter/providers/delegate';
+import { CoreCustomURLSchemesProvider } from '@providers/urlschemes';
 
 /**
  * Directive to format text rendered. It renders the HTML and treats all links and media, using CoreLinkDirective
- * and CoreExternalContentDirective.
+ * and CoreExternalContentDirective. It also applies filters if needed.
+ *
+ * Please use this directive if your text needs to be filtered or it can contain links or media (images, audio, video).
  *
  * Example usage:
  * <core-format-text [text]="myText" [component]="component" [componentId]="componentId"></core-format-text>
- *
  */
 @Directive({
     selector: 'core-format-text'
@@ -55,19 +61,41 @@ export class CoreFormatTextDirective implements OnChanges {
                                  // If you want to avoid this use class="inline" at the same time to use display: inline-block.
     @Input() fullOnClick?: boolean | string; // Whether it should open a new page with the full contents on click.
     @Input() fullTitle?: string; // Title to use in full view. Defaults to "Description".
+    @Input() highlight?: string; // Text to highlight.
+    @Input() filter?: boolean | string; // Whether to filter the text. If not defined, true if contextLevel and instanceId are set.
+    @Input() contextLevel?: string; // The context level of the text.
+    @Input() contextInstanceId?: number; // The instance ID related to the context.
+    @Input() courseId?: number; // Course ID the text belongs to. It can be used to improve performance with filters.
+    @Input() wsNotFiltered?: boolean | string; // If true it means the WS didn't filter the text for some reason.
     @Output() afterRender?: EventEmitter<any>; // Called when the data is rendered.
 
     protected element: HTMLElement;
     protected showMoreDisplayed: boolean;
     protected loadingChangedListener;
 
-    constructor(element: ElementRef, private sitesProvider: CoreSitesProvider, private domUtils: CoreDomUtilsProvider,
-            private textUtils: CoreTextUtilsProvider, private translate: TranslateService, private platform: Platform,
-            private utils: CoreUtilsProvider, private urlUtils: CoreUrlUtilsProvider, private loggerProvider: CoreLoggerProvider,
-            private filepoolProvider: CoreFilepoolProvider, private appProvider: CoreAppProvider,
-            private contentLinksHelper: CoreContentLinksHelperProvider, @Optional() private navCtrl: NavController,
-            @Optional() private content: Content, @Optional() private svComponent: CoreSplitViewComponent,
-            private iframeUtils: CoreIframeUtilsProvider, private eventsProvider: CoreEventsProvider) {
+    constructor(element: ElementRef,
+            protected sitesProvider: CoreSitesProvider,
+            protected domUtils: CoreDomUtilsProvider,
+            protected textUtils: CoreTextUtilsProvider,
+            protected translate: TranslateService,
+            protected platform: Platform,
+            protected utils: CoreUtilsProvider,
+            protected urlUtils: CoreUrlUtilsProvider,
+            protected loggerProvider: CoreLoggerProvider,
+            protected filepoolProvider: CoreFilepoolProvider,
+            protected contentLinksHelper: CoreContentLinksHelperProvider,
+            @Optional() protected navCtrl: NavController,
+            @Optional() protected content: Content, @Optional()
+            @Optional() protected svComponent: CoreSplitViewComponent,
+            protected iframeUtils: CoreIframeUtilsProvider,
+            protected eventsProvider: CoreEventsProvider,
+            protected filterProvider: CoreFilterProvider,
+            protected filterHelper: CoreFilterHelperProvider,
+            protected filterDelegate: CoreFilterDelegate,
+            protected viewContainerRef: ViewContainerRef,
+            protected urlSchemesProvider: CoreCustomURLSchemesProvider
+            ) {
+
         this.element = element.nativeElement;
         this.element.classList.add('opacity-hide'); // Hide contents until they're treated.
         this.afterRender = new EventEmitter();
@@ -79,7 +107,8 @@ export class CoreFormatTextDirective implements OnChanges {
      * Detect changes on input properties.
      */
     ngOnChanges(changes: { [name: string]: SimpleChange }): void {
-        if (changes.text) {
+        if (changes.text || changes.filter || changes.contextLevel || changes.contextInstanceId) {
+            this.hideShowMore();
             this.formatAndRenderContents();
         }
     }
@@ -87,39 +116,44 @@ export class CoreFormatTextDirective implements OnChanges {
     /**
      * Apply CoreExternalContentDirective to a certain element.
      *
-     * @param {HTMLElement} element Element to add the attributes to.
+     * @param element Element to add the attributes to.
+     * @return External content instance.
      */
-    protected addExternalContent(element: HTMLElement): void {
+    protected addExternalContent(element: Element): CoreExternalContentDirective {
         // Angular 2 doesn't let adding directives dynamically. Create the CoreExternalContentDirective manually.
-        const extContent = new CoreExternalContentDirective(<any> element, this.loggerProvider, this.filepoolProvider,
-            this.platform, this.sitesProvider, this.domUtils, this.urlUtils, this.appProvider, this.utils);
+        const extContent = new CoreExternalContentDirective(new ElementRef(element), this.loggerProvider, this.filepoolProvider,
+            this.platform, this.sitesProvider, this.domUtils, this.urlUtils, this.utils);
 
         extContent.component = this.component;
         extContent.componentId = this.componentId;
         extContent.siteId = this.siteId;
+        extContent.src = element.getAttribute('src');
+        extContent.href = element.getAttribute('href') || element.getAttribute('xlink:href');
+        extContent.targetSrc = element.getAttribute('target-src');
+        extContent.poster = element.getAttribute('poster');
 
         extContent.ngAfterViewInit();
+
+        return extContent;
     }
 
     /**
      * Add class to adapt media to a certain element.
      *
-     * @param {HTMLElement} element Element to add the class to.
+     * @param element Element to add the class to.
      */
     protected addMediaAdaptClass(element: HTMLElement): void {
         element.classList.add('core-media-adapt-width');
     }
 
     /**
-     * Wrap an image with a container to adapt its width and, if needed, add an anchor to view it in full size.
+     * Wrap an image with a container to adapt its width.
      *
-     * @param {number} elWidth Width of the directive's element.
-     * @param {HTMLElement} img Image to adapt.
+     * @param img Image to adapt.
      */
-    protected adaptImage(elWidth: number, img: HTMLElement): void {
-        const imgWidth = this.getElementWidth(img),
-            // Element to wrap the image.
-            container = document.createElement('span'),
+    protected adaptImage(img: HTMLElement): void {
+        // Element to wrap the image.
+        const container = document.createElement('span'),
             originalWidth = img.attributes.getNamedItem('width');
 
         const forcedWidth = parseInt(originalWidth && originalWidth.value);
@@ -137,39 +171,62 @@ export class CoreFormatTextDirective implements OnChanges {
             container.classList.add('atto_image_button_right');
         } else if (img.classList.contains('atto_image_button_left')) {
             container.classList.add('atto_image_button_left');
+        } else if (img.classList.contains('atto_image_button_text-top')) {
+            container.classList.add('atto_image_button_text-top');
+        } else if (img.classList.contains('atto_image_button_middle')) {
+            container.classList.add('atto_image_button_middle');
+        } else if (img.classList.contains('atto_image_button_text-bottom')) {
+            container.classList.add('atto_image_button_text-bottom');
         }
 
         this.domUtils.wrapElement(img, container);
-
-        if (imgWidth > elWidth) {
-            // The image has been adapted, add an anchor to view it in full size.
-            this.addMagnifyingGlass(container, img);
-        }
     }
 
     /**
-     * Add a magnifying glass icon to view an image at full size.
-     *
-     * @param {HTMLElement} container The container of the image.
-     * @param {HTMLElement} img The image.
+     * Add magnifying glass icons to view adapted images at full size.
      */
-    addMagnifyingGlass(container: HTMLElement, img: HTMLElement): void {
-        const imgSrc = this.textUtils.escapeHTML(img.getAttribute('src')),
-            label = this.textUtils.escapeHTML(this.translate.instant('core.openfullimage')),
+    addMagnifyingGlasses(): void {
+        const imgs = Array.from(this.element.querySelectorAll('.core-adapted-img-container > img'));
+        if (!imgs.length) {
+            return;
+        }
+
+        // If cannot calculate element's width, use viewport width to avoid false adapt image icons appearing.
+        const elWidth = this.getElementWidth(this.element) || window.innerWidth;
+
+        imgs.forEach((img: HTMLImageElement) => {
+            // Skip image if it's inside a link.
+            if (img.closest('a')) {
+                return;
+            }
+
+            let imgWidth = parseInt(img.getAttribute('width'));
+            if (!imgWidth) {
+                // No width attribute, use real size.
+                imgWidth = img.naturalWidth;
+            }
+
+            if (imgWidth <= elWidth) {
+                return;
+            }
+
+            const imgSrc = this.textUtils.escapeHTML(img.getAttribute('data-original-src') || img.getAttribute('src')),
+            label = this.translate.instant('core.openfullimage'),
             anchor = document.createElement('a');
 
-        anchor.classList.add('core-image-viewer-icon');
-        anchor.setAttribute('aria-label', label);
-        // Add an ion-icon item to apply the right styles, but the ion-icon component won't be executed.
-        anchor.innerHTML = '<ion-icon name="search" class="icon icon-md ion-md-search"></ion-icon>';
+            anchor.classList.add('core-image-viewer-icon');
+            anchor.setAttribute('aria-label', label);
+            // Add an ion-icon item to apply the right styles, but the ion-icon component won't be executed.
+            anchor.innerHTML = '<ion-icon name="search" class="icon icon-md ion-md-search"></ion-icon>';
 
-        anchor.addEventListener('click', (e: Event) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.domUtils.viewImage(imgSrc, img.getAttribute('alt'), this.component, this.componentId);
+            anchor.addEventListener('click', (e: Event) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.domUtils.viewImage(imgSrc, img.getAttribute('alt'), this.component, this.componentId, true);
+            });
+
+            img.parentNode.appendChild(anchor);
         });
-
-        container.appendChild(anchor);
     }
 
     /**
@@ -221,7 +278,7 @@ export class CoreFormatTextDirective implements OnChanges {
     /**
      * Listener to call when the element is clicked.
      *
-     * @param {MouseEvent} e Click event.
+     * @param e Click event.
      */
     protected elementClicked(e: MouseEvent): void {
         if (e.defaultPrevented) {
@@ -246,8 +303,16 @@ export class CoreFormatTextDirective implements OnChanges {
             return;
         } else {
             // Open a new state with the contents.
-            this.textUtils.expandText(this.fullTitle || this.translate.instant('core.description'), this.text,
-                this.component, this.componentId);
+            const filter = typeof this.filter != 'undefined' ? this.utils.isTrueOrOne(this.filter) : undefined;
+
+            this.textUtils.viewText(this.fullTitle || this.translate.instant('core.description'), this.text, {
+                component: this.component,
+                componentId: this.componentId,
+                filter: filter,
+                contextLevel: this.contextLevel,
+                instanceId: this.contextInstanceId,
+                courseId: this.courseId,
+            });
         }
     }
 
@@ -282,25 +347,22 @@ export class CoreFormatTextDirective implements OnChanges {
 
         this.text = this.text ? this.text.trim() : '';
 
-        this.formatContents().then((div: HTMLElement) => {
+        this.formatContents().then((result) => {
             // Disable media adapt to correctly calculate the height.
             this.element.classList.add('core-disable-media-adapt');
 
             this.element.innerHTML = ''; // Remove current contents.
-            if (this.maxHeight && div.innerHTML != '') {
+            if (this.maxHeight && result.div.innerHTML != '' &&
+                    (this.fullOnClick || (window.innerWidth < 576 || window.innerHeight < 576))) { // Don't collapse in big screens.
 
                 // Move the children to the current element to be able to calculate the height.
-                this.domUtils.moveChildren(div, this.element);
+                this.domUtils.moveChildren(result.div, this.element);
 
                 // Calculate the height now.
                 this.calculateHeight();
 
-                // Wait for images to load and calculate the height again if needed.
-                this.waitForImages().then((hasImgToLoad) => {
-                    if (hasImgToLoad) {
-                        this.calculateHeight();
-                    }
-                });
+                // Add magnifying glasses to images.
+                this.addMagnifyingGlasses();
 
                 if (!this.loadingChangedListener) {
                     // Recalculate the height if a parent core-loading displays the content.
@@ -312,7 +374,16 @@ export class CoreFormatTextDirective implements OnChanges {
                     });
                 }
             } else {
-                this.domUtils.moveChildren(div, this.element);
+                this.domUtils.moveChildren(result.div, this.element);
+
+                // Add magnifying glasses to images.
+                this.addMagnifyingGlasses();
+            }
+
+            if (result.options.filter) {
+                // Let filters hnadle HTML. We do it here because we don't want them to block the render of the text.
+                this.filterDelegate.handleHtml(this.element, result.filters, this.viewContainerRef, result.options, [],
+                        this.component, this.componentId, result.siteId);
             }
 
             this.element.classList.remove('core-disable-media-adapt');
@@ -323,10 +394,17 @@ export class CoreFormatTextDirective implements OnChanges {
     /**
      * Apply formatText and set sub-directives.
      *
-     * @return {Promise<HTMLElement>} Promise resolved with a div element containing the code.
+     * @return Promise resolved with a div element containing the code.
      */
-    protected formatContents(): Promise<HTMLElement> {
+    protected formatContents(): Promise<{div: HTMLElement, filters: CoreFilterFilter[], options: CoreFilterFormatTextOptions,
+            siteId: string}> {
 
+        const result = {
+            div: <HTMLElement> null,
+            filters: <CoreFilterFilter[]> [],
+            options: <CoreFilterFormatTextOptions> {},
+            siteId: this.siteId
+        };
         let site: CoreSite;
 
         // Retrieve the site since it might be needed later.
@@ -335,55 +413,85 @@ export class CoreFormatTextDirective implements OnChanges {
         }).then((siteInstance: CoreSite) => {
             site = siteInstance;
 
-            // Apply format text function.
-            return this.textUtils.formatText(this.text, this.utils.isTrueOrOne(this.clean),
-                this.utils.isTrueOrOne(this.singleLine));
+            if (site) {
+                result.siteId = site.getId();
+            }
+
+            if (this.contextLevel == 'course' && this.contextInstanceId <= 0) {
+                this.contextInstanceId = site.getSiteHomeId();
+            }
+
+            const filter = typeof this.filter == 'undefined' ?
+                    !!(this.contextLevel && typeof this.contextInstanceId != 'undefined') : this.utils.isTrueOrOne(this.filter);
+
+            result.options = {
+                clean: this.utils.isTrueOrOne(this.clean),
+                singleLine: this.utils.isTrueOrOne(this.singleLine),
+                highlight: this.highlight,
+                courseId: this.courseId,
+                wsNotFiltered: this.utils.isTrueOrOne(this.wsNotFiltered)
+            };
+
+            if (filter) {
+                return this.filterHelper.getFiltersAndFormatText(this.text, this.contextLevel, this.contextInstanceId,
+                        result.options, result.siteId).then((res) => {
+
+                    result.filters = res.filters;
+
+                    return res.text;
+                });
+            } else {
+                return this.filterProvider.formatText(this.text, result.options, [], result.siteId);
+            }
+
         }).then((formatted) => {
+            formatted = this.treatWindowOpen(formatted);
+
             const div = document.createElement('div'),
-                canTreatVimeo = site && site.isVersionGreaterEqualThan(['3.3.4', '3.4']);
-            let images,
-                anchors,
-                audios,
-                videos,
-                iframes,
-                buttons,
-                elementsWithInlineStyles,
-                stopClicksElements,
-                frames;
+                canTreatVimeo = site && site.isVersionGreaterEqualThan(['3.3.4', '3.4']),
+                navCtrl = this.svComponent ? this.svComponent.getMasterNav() : this.navCtrl;
+            const promises = [];
 
             div.innerHTML = formatted;
-            images = Array.from(div.querySelectorAll('img'));
-            anchors = Array.from(div.querySelectorAll('a'));
-            audios = Array.from(div.querySelectorAll('audio'));
-            videos = Array.from(div.querySelectorAll('video'));
-            iframes = Array.from(div.querySelectorAll('iframe'));
-            buttons = Array.from(div.querySelectorAll('.button'));
-            elementsWithInlineStyles = Array.from(div.querySelectorAll('*[style]'));
-            stopClicksElements = Array.from(div.querySelectorAll('button,input,select,textarea'));
-            frames = Array.from(div.querySelectorAll(CoreIframeUtilsProvider.FRAME_TAGS.join(',').replace(/iframe,?/, '')));
+
+            const images = Array.from(div.querySelectorAll('img'));
+            const anchors = Array.from(div.querySelectorAll('a'));
+            const audios = Array.from(div.querySelectorAll('audio'));
+            const videos = Array.from(div.querySelectorAll('video'));
+            const iframes = Array.from(div.querySelectorAll('iframe'));
+            const buttons = Array.from(div.querySelectorAll('.button'));
+            const elementsWithInlineStyles = Array.from(div.querySelectorAll('*[style]'));
+            const stopClicksElements = Array.from(div.querySelectorAll('button,input,select,textarea'));
+            const frames = Array.from(div.querySelectorAll(CoreIframeUtilsProvider.FRAME_TAGS.join(',').replace(/iframe,?/, '')));
+            const svgImages = Array.from(div.querySelectorAll('image'));
 
             // Walk through the content to find the links and add our directive to it.
             // Important: We need to look for links first because in 'img' we add new links without core-link.
             anchors.forEach((anchor) => {
                 // Angular 2 doesn't let adding directives dynamically. Create the CoreLinkDirective manually.
-                const linkDir = new CoreLinkDirective(anchor, this.domUtils, this.utils, this.sitesProvider, this.urlUtils,
-                    this.contentLinksHelper, this.navCtrl, this.content, this.svComponent);
+                const elementRef = new ElementRef(anchor);
+
+                const linkDir = new CoreLinkDirective(elementRef, this.domUtils, this.utils, this.sitesProvider, this.urlUtils,
+                    this.contentLinksHelper, this.navCtrl, this.content, this.svComponent, this.textUtils, this.urlSchemesProvider);
                 linkDir.capture = true;
                 linkDir.ngOnInit();
 
                 this.addExternalContent(anchor);
             });
 
+            const externalImages: CoreExternalContentDirective[] = [];
             if (images && images.length > 0) {
-                // If cannot calculate element's width, use a medium number to avoid false adapt image icons appearing.
-                const elWidth = this.getElementWidth(this.element) || 100;
-
                 // Walk through the content to find images, and add our directive.
                 images.forEach((img: HTMLElement) => {
                     this.addMediaAdaptClass(img);
-                    this.addExternalContent(img);
-                    if (this.utils.isTrueOrOne(this.adaptImg)) {
-                        this.adaptImage(elWidth, img);
+
+                    const externalImage = this.addExternalContent(img);
+                    if (!externalImage.invalid) {
+                        externalImages.push(externalImage);
+                    }
+
+                    if (this.utils.isTrueOrOne(this.adaptImg) && !img.classList.contains('icon')) {
+                        this.adaptImage(img);
                     }
                 });
             }
@@ -393,12 +501,15 @@ export class CoreFormatTextDirective implements OnChanges {
             });
 
             videos.forEach((video) => {
-                this.treatVideoFilters(video);
                 this.treatMedia(video);
             });
 
             iframes.forEach((iframe) => {
-                this.treatIframe(iframe, site, canTreatVimeo);
+                promises.push(this.treatIframe(iframe, site, canTreatVimeo, navCtrl));
+            });
+
+            svgImages.forEach((image) => {
+                this.addExternalContent(image);
             });
 
             // Handle buttons with inner links.
@@ -427,18 +538,44 @@ export class CoreFormatTextDirective implements OnChanges {
 
             // Handle all kind of frames.
             frames.forEach((frame: any) => {
-                this.iframeUtils.treatFrame(frame);
+                this.iframeUtils.treatFrame(frame, false, navCtrl);
             });
 
-            return div;
+            this.domUtils.handleBootstrapTooltips(div);
+
+            // Wait for images to load.
+            if (externalImages.length) {
+                // Automatically reject the promise after 5 seconds to prevent blocking the user forever.
+                promises.push(this.utils.timeoutPromise(this.utils.allPromises(externalImages.map((externalImage): any => {
+                    if (externalImage.loaded) {
+                        // Image has already been loaded, no need to wait.
+                        return Promise.resolve();
+                    }
+
+                    return new Promise((resolve): void => {
+                        const subscription = externalImage.onLoad.subscribe(() => {
+                            subscription.unsubscribe();
+                            resolve();
+                        });
+                    });
+                })), 5000));
+            }
+
+            return Promise.all(promises).catch(() => {
+                // Ignore errors. So content gets always shown.
+            }).then(() => {
+                result.div = div;
+
+                return result;
+            });
         });
     }
 
     /**
      * Returns the element width in pixels.
      *
-     * @param {HTMLElement} element Element to get width from.
-     * @return {number} The width of the element in pixels. When 0 is returned it means the element is not visible.
+     * @param element Element to get width from.
+     * @return The width of the element in pixels. When 0 is returned it means the element is not visible.
      */
     protected getElementWidth(element: HTMLElement): number {
         let width = this.domUtils.getElementWidth(element);
@@ -466,8 +603,8 @@ export class CoreFormatTextDirective implements OnChanges {
     /**
      * Returns the element height in pixels.
      *
-     * @param {HTMLElement} elementAng Element to get height from.
-     * @return {number} The height of the element in pixels. When 0 is returned it means the element is not visible.
+     * @param elementAng Element to get height from.
+     * @return The height of the element in pixels. When 0 is returned it means the element is not visible.
      */
     protected getElementHeight(element: HTMLElement): number {
         return this.domUtils.getElementHeight(element) || 0;
@@ -491,40 +628,9 @@ export class CoreFormatTextDirective implements OnChanges {
     }
 
     /**
-     * Treat video filters. Currently only treating youtube video using video JS.
-     *
-     * @param {HTMLElement} el Video element.
-     */
-    protected treatVideoFilters(video: HTMLElement): void {
-        // Treat Video JS Youtube video links and translate them to iframes.
-        if (!video.classList.contains('video-js')) {
-            return;
-        }
-
-        const data = this.textUtils.parseJSON(video.getAttribute('data-setup') || video.getAttribute('data-setup-lazy') || '{}'),
-            youtubeId = data.techOrder && data.techOrder[0] && data.techOrder[0] == 'youtube' && data.sources && data.sources[0] &&
-                data.sources[0].src && this.youtubeGetId(data.sources[0].src);
-
-        if (!youtubeId) {
-            return;
-        }
-
-        const iframe = document.createElement('iframe');
-        iframe.id = video.id;
-        iframe.src = 'https://www.youtube.com/embed/' + youtubeId;
-        iframe.setAttribute('frameborder', '0');
-        iframe.setAttribute('allowfullscreen', '1');
-        iframe.width = '100%';
-        iframe.height = '300';
-
-        // Replace video tag by the iframe.
-        video.parentNode.replaceChild(iframe, video);
-    }
-
-    /**
      * Add media adapt class and apply CoreExternalContentDirective to the media element and its sources and tracks.
      *
-     * @param {HTMLElement} element Video or audio to treat.
+     * @param element Video or audio to treat.
      */
     protected treatMedia(element: HTMLElement): void {
         this.addMediaAdaptClass(element);
@@ -552,11 +658,13 @@ export class CoreFormatTextDirective implements OnChanges {
     /**
      * Add media adapt class and treat the iframe source.
      *
-     * @param {HTMLIFrameElement} iframe Iframe to treat.
-     * @param {CoreSite} site Site instance.
-     * @param  {Boolean} canTreatVimeo Whether Vimeo videos can be treated in the site.
+     * @param iframe Iframe to treat.
+     * @param site Site instance.
+     * @param canTreatVimeo Whether Vimeo videos can be treated in the site.
+     * @param navCtrl NavController to use.
      */
-    protected treatIframe(iframe: HTMLIFrameElement, site: CoreSite, canTreatVimeo: boolean): void {
+    protected async treatIframe(iframe: HTMLIFrameElement, site: CoreSite, canTreatVimeo: boolean, navCtrl: NavController)
+            : Promise<void> {
         const src = iframe.src,
             currentSite = this.sitesProvider.getCurrentSite();
 
@@ -564,19 +672,24 @@ export class CoreFormatTextDirective implements OnChanges {
 
         if (currentSite && currentSite.containsUrl(src)) {
             // URL points to current site, try to use auto-login.
-            currentSite.getAutoLoginUrl(src, false).then((finalUrl) => {
-                iframe.src = finalUrl;
+            const finalUrl = await currentSite.getAutoLoginUrl(src, false);
 
-                this.iframeUtils.treatFrame(iframe);
-            });
+            await this.iframeUtils.fixIframeCookies(finalUrl);
+
+            iframe.src = finalUrl;
+
+            this.iframeUtils.treatFrame(iframe, false, navCtrl);
 
             return;
+        }
 
-        } else if (src && canTreatVimeo) {
+        await this.iframeUtils.fixIframeCookies(src);
+
+        if (src && canTreatVimeo) {
             // Check if it's a Vimeo video. If it is, use the wsplayer script instead to make restricted videos work.
             const matches = iframe.src.match(/https?:\/\/player\.vimeo\.com\/video\/([0-9]+)/);
             if (matches && matches[1]) {
-                const newUrl = this.textUtils.concatenatePaths(site.getURL(), '/media/player/vimeo/wsplayer.php?video=') +
+                let newUrl = this.textUtils.concatenatePaths(site.getURL(), '/media/player/vimeo/wsplayer.php?video=') +
                     matches[1] + '&token=' + site.getToken();
 
                 // Width and height are mandatory, we need to calculate them.
@@ -600,8 +713,15 @@ export class CoreFormatTextDirective implements OnChanges {
                     }
                 }
 
-                // Always include the width and height in the URL.
-                iframe.src = newUrl + '&width=' + width + '&height=' + height;
+                // Width and height parameters are required in 3.6 and older sites.
+                if (site && !site.isVersionGreaterEqualThan('3.7')) {
+                    newUrl += '&width=' + width + '&height=' + height;
+                }
+
+                await this.iframeUtils.fixIframeCookies(newUrl);
+
+                iframe.src = newUrl;
+
                 if (!iframe.width) {
                     iframe.width = width;
                 }
@@ -620,57 +740,31 @@ export class CoreFormatTextDirective implements OnChanges {
                         }
                     });
                 }
-
-                return;
             }
         }
 
-        this.iframeUtils.treatFrame(iframe);
+        this.iframeUtils.treatFrame(iframe, false, navCtrl);
     }
 
     /**
-     * Wait for images to load.
+     * Convert window.open to window.openWindowSafely inside HTML tags.
      *
-     * @return {Promise<boolean>} Promise resolved with a boolean: whether there was any image to load.
+     * @param text Text to treat.
+     * @return Treated text.
      */
-    protected waitForImages(): Promise<boolean> {
-        const imgs = Array.from(this.element.querySelectorAll('img')),
-            promises = [];
-        let hasImgToLoad = false;
+    protected treatWindowOpen(text: string): string {
+        // Get HTML tags that include window.open. Script tags aren't executed so there's no need to treat them.
+        const matches = text.match(/<[^>]+window\.open\([^\)]*\)[^>]*>/g);
 
-        imgs.forEach((img) => {
-            if (img && !img.complete) {
-                hasImgToLoad = true;
+        if (matches) {
+            matches.forEach((match) => {
+                // Replace all the window.open inside the tag.
+                const treated = match.replace(/window\.open\(/g, 'window.openWindowSafely(');
 
-                // Wait for image to load or fail.
-                promises.push(new Promise((resolve, reject): void => {
-                    const imgLoaded = (): void => {
-                        resolve();
-                        img.removeEventListener('loaded', imgLoaded);
-                        img.removeEventListener('error', imgLoaded);
-                    };
+                text = text.replace(match, treated);
+            });
+        }
 
-                    img.addEventListener('load', imgLoaded);
-                    img.addEventListener('error', imgLoaded);
-                }));
-            }
-        });
-
-        return Promise.all(promises).then(() => {
-            return hasImgToLoad;
-        });
-    }
-
-    /**
-     * Convenience function to extract YouTube Id to translate to embedded video.
-     * Based on http://stackoverflow.com/questions/3452546/javascript-regex-how-to-get-youtube-video-id-from-url
-     *
-     * @param {string} url URL of the video.
-     */
-    protected youtubeGetId(url: string): string {
-        const regExp = /^.*(?:(?:youtu.be\/)|(?:v\/)|(?:\/u\/\w\/)|(?:embed\/)|(?:watch\?))\??v?=?([^#\&\?]*).*/,
-            match = url.match(regExp);
-
-        return (match && match[1].length == 11) ? match[1] : '';
+        return text;
     }
 }

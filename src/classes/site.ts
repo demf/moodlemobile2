@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,19 +14,20 @@
 
 import { Injector } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { HttpClient } from '@angular/common/http';
 import { SQLiteDB } from './sqlitedb';
 import { CoreAppProvider } from '@providers/app';
 import { CoreDbProvider } from '@providers/db';
 import { CoreEventsProvider } from '@providers/events';
 import { CoreFileProvider } from '@providers/file';
 import { CoreLoggerProvider } from '@providers/logger';
-import { CoreWSProvider, CoreWSPreSets, CoreWSFileUploadOptions } from '@providers/ws';
+import {
+    CoreWSProvider, CoreWSPreSets, CoreWSFileUploadOptions, CoreWSAjaxPreSets, CoreWSPreSetsSplitRequest
+} from '@providers/ws';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
 import { CoreTimeUtilsProvider } from '@providers/utils/time';
 import { CoreUrlUtilsProvider } from '@providers/utils/url';
-import { CoreUtilsProvider } from '@providers/utils/utils';
+import { CoreUtilsProvider, PromiseDefer } from '@providers/utils/utils';
 import { CoreConstants } from '@core/constants';
 import { CoreConfigConstants } from '../configconstants';
 import { Md5 } from 'ts-md5/dist/md5';
@@ -38,81 +39,113 @@ import { InAppBrowserObject } from '@ionic-native/in-app-browser';
 export interface CoreSiteWSPreSets {
     /**
      * Get the value from the cache if it's still valid.
-     * @type {boolean}
      */
     getFromCache?: boolean;
 
     /**
      * Save the result to the cache.
-     * @type {boolean}
      */
     saveToCache?: boolean;
 
     /**
      * Ignore cache expiration.
-     * @type {boolean}
      */
     omitExpires?: boolean;
 
     /**
      * Use the cache when a request fails. Defaults to true.
-     * @type {boolean}
      */
     emergencyCache?: boolean;
 
     /**
+     * If true, the app won't call the WS. If the data isn't cached, the call will fail.
+     */
+    forceOffline?: boolean;
+
+    /**
      * Extra key to add to the cache when storing this call, to identify the entry.
-     * @type {string}
      */
     cacheKey?: string;
 
     /**
      * Whether it should use cache key to retrieve the cached data instead of the request params.
-     * @type {boolean}
      */
     getCacheUsingCacheKey?: boolean;
 
     /**
      * Same as getCacheUsingCacheKey, but for emergency cache.
-     * @type {boolean}
      */
     getEmergencyCacheUsingCacheKey?: boolean;
 
     /**
      * If true, the cache entry will be deleted if the WS call returns an exception.
-     * @type {boolean}
      */
     deleteCacheIfWSError?: boolean;
 
     /**
      * Whether it should only be 1 entry for this cache key (all entries with same key will be deleted).
-     * @type {boolean}
      */
     uniqueCacheKey?: boolean;
 
     /**
      * Whether to filter WS response (moodlewssettingfilter). Defaults to true.
-     * @type {boolean}
      */
     filter?: boolean;
 
     /**
      * Whether to rewrite URLs (moodlewssettingfileurl). Defaults to true.
-     * @type {boolean}
      */
     rewriteurls?: boolean;
 
     /**
      * Defaults to true. Set to false when the expected response is null.
-     * @type {boolean}
      */
     responseExpected?: boolean;
 
     /**
      * Defaults to 'object'. Use it when you expect a type that's not an object|array.
-     * @type {string}
      */
     typeExpected?: string;
+
+    /**
+     * Wehther a pending request in the queue matching the same function and arguments can be reused instead of adding
+     * a new request to the queue. Defaults to true for read requests.
+     */
+    reusePending?: boolean;
+
+    /**
+     * Whether the request will be be sent immediately as a single request. Defaults to false.
+     */
+    skipQueue?: boolean;
+
+    /**
+     * Cache the response if it returns an errorcode present in this list.
+     */
+    cacheErrors?: string[];
+
+    /**
+     * Update frequency. This value determines how often the cached data will be updated. Possible values:
+     * CoreSite.FREQUENCY_USUALLY, CoreSite.FREQUENCY_OFTEN, CoreSite.FREQUENCY_SOMETIMES, CoreSite.FREQUENCY_RARELY.
+     * Defaults to CoreSite.FREQUENCY_USUALLY.
+     */
+    updateFrequency?: number;
+
+    /**
+     * Component name. Optionally included if this request is being made on behalf of a specific
+     * component (e.g. activity).
+     */
+    component?: string;
+
+    /**
+     * Component id. Optionally included when 'component' is set.
+     */
+    componentId?: number;
+
+    /**
+     * Whether to split a request if it has too many parameters. Sending too many parameters to the site
+     * can cause the request to fail (see PHP's max_input_vars).
+     */
+    splitRequest?: CoreWSPreSetsSplitRequest;
 }
 
 /**
@@ -121,43 +154,60 @@ export interface CoreSiteWSPreSets {
 export interface LocalMobileResponse {
     /**
      * Code to identify the authentication method to use.
-     * @type {number}
      */
     code: number;
 
     /**
      * Name of the service to use.
-     * @type {string}
      */
     service?: string;
 
     /**
      * Code of the warning message.
-     * @type {string}
      */
     warning?: string;
 
     /**
      * Whether core SSO is supported.
-     * @type {boolean}
      */
     coreSupported?: boolean;
 }
 
 /**
+ * Info of a request waiting in the queue.
+ */
+interface RequestQueueItem {
+    cacheId: string;
+    method: string;
+    data: any;
+    preSets: CoreSiteWSPreSets;
+    wsPreSets: CoreWSPreSets;
+    deferred: PromiseDefer;
+}
+
+/**
  * Class that represents a site (combination of site + user).
  * It will have all the site data and provide utility functions regarding a site.
- * To add tables to the site's database, please use CoreSitesProvider.createTablesFromSchema. This will make sure that
+ * To add tables to the site's database, please use CoreSitesProvider.registerSiteSchema. This will make sure that
  * the tables are created in all the sites, not just the current one.
  */
 export class CoreSite {
+    static REQUEST_QUEUE_DELAY = 50; // Maximum number of miliseconds to wait before processing the queue.
+    static REQUEST_QUEUE_LIMIT = 10; // Maximum number of requests allowed in the queue.
+    static REQUEST_QUEUE_FORCE_WS = false; // Use "tool_mobile_call_external_functions" even for calling a single function.
+
+    // Constants for cache update frequency.
+    static FREQUENCY_USUALLY = 0;
+    static FREQUENCY_OFTEN = 1;
+    static FREQUENCY_SOMETIMES = 2;
+    static FREQUENCY_RARELY = 3;
+
     // List of injected services. This class isn't injectable, so it cannot use DI.
     protected appProvider: CoreAppProvider;
     protected dbProvider: CoreDbProvider;
     protected domUtils: CoreDomUtilsProvider;
     protected eventsProvider: CoreEventsProvider;
     protected fileProvider: CoreFileProvider;
-    protected http: HttpClient;
     protected textUtils: CoreTextUtilsProvider;
     protected timeUtils: CoreTimeUtilsProvider;
     protected translate: TranslateService;
@@ -166,37 +216,31 @@ export class CoreSite {
     protected wsProvider: CoreWSProvider;
 
     // Variables for the database.
-    protected WS_CACHE_TABLE = 'wscache';
-    protected tableSchema = {
-        name: this.WS_CACHE_TABLE,
-        columns: [
-            {
-                name: 'id',
-                type: 'TEXT',
-                primaryKey: true
-            },
-            {
-                name: 'data',
-                type: 'TEXT'
-            },
-            {
-                name: 'key',
-                type: 'TEXT'
-            },
-            {
-                name: 'expirationTime',
-                type: 'INTEGER'
-            }
-        ]
-    };
+    static WS_CACHE_TABLE = 'wscache_2';
+    static CONFIG_TABLE = 'core_site_config';
 
     // Versions of Moodle releases.
     protected MOODLE_RELEASES = {
-        3.1: 2016052300,
-        3.2: 2016120500,
-        3.3: 2017051503,
-        3.4: 2017111300
+        '3.1': 2016052300,
+        '3.2': 2016120500,
+        '3.3': 2017051503,
+        '3.4': 2017111300,
+        '3.5': 2018051700,
+        '3.6': 2018120300,
+        '3.7': 2019052000,
+        '3.8': 2019111800,
+        '3.9': 2020061500,
+        '3.10': 2020092400, // @todo: Replace with the right value once 3.10 is released.
     };
+    static MINIMUM_MOODLE_VERSION = '3.1';
+
+    // Possible cache update frequencies.
+    protected UPDATE_FREQUENCIES = [
+        CoreConfigConstants.cache_update_frequency_usually || 420000,
+        CoreConfigConstants.cache_update_frequency_often || 1200000,
+        CoreConfigConstants.cache_update_frequency_sometimes || 3600000,
+        CoreConfigConstants.cache_update_frequency_rarely || 43200000
+    ];
 
     // Rest of variables.
     protected logger;
@@ -204,18 +248,24 @@ export class CoreSite {
     protected cleanUnicode = false;
     protected lastAutoLogin = 0;
     protected offlineDisabled = false;
+    protected ongoingRequests: { [cacheId: string]: Promise<any> } = {};
+    protected requestQueue: RequestQueueItem[] = [];
+    protected requestQueueTimeout = null;
+    protected tokenPluginFileWorks: boolean;
+    protected tokenPluginFileWorksPromise: Promise<boolean>;
+    protected oauthId: number;
 
     /**
      * Create a site.
      *
-     * @param {Injector} injector Angular injector to prevent having to pass all the required services.
-     * @param {string} id Site ID.
-     * @param {string} siteUrl Site URL.
-     * @param {string} [token] Site's WS token.
-     * @param {any} [info] Site info.
-     * @param {string} [privateToken] Private token.
-     * @param {any} [config] Site public config.
-     * @param {boolean} [loggedOut] Whether user is logged out.
+     * @param injector Angular injector to prevent having to pass all the required services.
+     * @param id Site ID.
+     * @param siteUrl Site URL.
+     * @param token Site's WS token.
+     * @param info Site info.
+     * @param privateToken Private token.
+     * @param config Site public config.
+     * @param loggedOut Whether user is logged out.
      */
     constructor(injector: Injector, public id: string, public siteUrl: string, public token?: string, public infos?: any,
             public privateToken?: string, public config?: any, public loggedOut?: boolean) {
@@ -226,7 +276,6 @@ export class CoreSite {
         this.domUtils = injector.get(CoreDomUtilsProvider);
         this.eventsProvider = injector.get(CoreEventsProvider);
         this.fileProvider = injector.get(CoreFileProvider);
-        this.http = injector.get(HttpClient);
         this.textUtils = injector.get(CoreTextUtilsProvider);
         this.timeUtils = injector.get(CoreTimeUtilsProvider);
         this.translate = injector.get(TranslateService);
@@ -235,6 +284,7 @@ export class CoreSite {
         this.wsProvider = injector.get(CoreWSProvider);
 
         this.logger = logger.getInstance('CoreWSProvider');
+        this.setInfo(infos);
         this.calculateOfflineDisabled();
 
         if (this.id) {
@@ -247,13 +297,12 @@ export class CoreSite {
      */
     initDB(): void {
         this.db = this.dbProvider.getDB('Site-' + this.id);
-        this.db.createTableFromSchema(this.tableSchema);
     }
 
     /**
      * Get site ID.
      *
-     * @return {string} Site ID.
+     * @return Site ID.
      */
     getId(): string {
         return this.id;
@@ -262,7 +311,7 @@ export class CoreSite {
     /**
      * Get site URL.
      *
-     * @return {string} Site URL.
+     * @return Site URL.
      */
     getURL(): string {
         return this.siteUrl;
@@ -271,7 +320,7 @@ export class CoreSite {
     /**
      * Get site token.
      *
-     * @return {string} Site token.
+     * @return Site token.
      */
     getToken(): string {
         return this.token;
@@ -280,7 +329,7 @@ export class CoreSite {
     /**
      * Get site info.
      *
-     * @return {any} Site info.
+     * @return Site info.
      */
     getInfo(): any {
         return this.infos;
@@ -289,7 +338,7 @@ export class CoreSite {
     /**
      * Get site private token.
      *
-     * @return {string} Site private token.
+     * @return Site private token.
      */
     getPrivateToken(): string {
         return this.privateToken;
@@ -298,7 +347,7 @@ export class CoreSite {
     /**
      * Get site DB.
      *
-     * @return {SQLiteDB} Site DB.
+     * @return Site DB.
      */
     getDb(): SQLiteDB {
         return this.db;
@@ -307,7 +356,7 @@ export class CoreSite {
     /**
      * Get site user's ID.
      *
-     * @return {number} User's ID.
+     * @return User's ID.
      */
     getUserId(): number {
         if (typeof this.infos != 'undefined' && typeof this.infos.userid != 'undefined') {
@@ -318,16 +367,30 @@ export class CoreSite {
     /**
      * Get site Course ID for frontpage course. If not declared it will return 1 as default.
      *
-     * @return {number} Site Home ID.
+     * @return Site Home ID.
      */
     getSiteHomeId(): number {
         return this.infos && this.infos.siteid || 1;
     }
 
     /**
+     * Get site name.
+     *
+     * @return Site name.
+     */
+    getSiteName(): string {
+        if (CoreConfigConstants.sitename) {
+            // Overridden by config.
+            return CoreConfigConstants.sitename;
+        } else {
+            return this.infos && this.infos.sitename || '';
+        }
+    }
+
+    /**
      * Set site ID.
      *
-     * @param {string} New ID.
+     * @param New ID.
      */
     setId(id: string): void {
         this.id = id;
@@ -337,7 +400,7 @@ export class CoreSite {
     /**
      * Set site token.
      *
-     * @param {string} New token.
+     * @param New token.
      */
     setToken(token: string): void {
         this.token = token;
@@ -346,7 +409,7 @@ export class CoreSite {
     /**
      * Set site private token.
      *
-     * @param {string} privateToken New private token.
+     * @param privateToken New private token.
      */
     setPrivateToken(privateToken: string): void {
         this.privateToken = privateToken;
@@ -355,25 +418,42 @@ export class CoreSite {
     /**
      * Check if user logged out from the site and needs to authenticate again.
      *
-     * @return {boolean} Whether is logged out.
+     * @return Whether is logged out.
      */
     isLoggedOut(): boolean {
         return !!this.loggedOut;
     }
 
     /**
+     * Get OAuth ID.
+     *
+     * @return OAuth ID.
+     */
+    getOAuthId(): number {
+        return this.oauthId;
+    }
+
+    /**
      * Set site info.
      *
-     * @param {any} New info.
+     * @param New info.
      */
     setInfo(infos: any): void {
         this.infos = infos;
+
+        // Index function by name to speed up wsAvailable method.
+        if (infos && infos.functions) {
+            infos.functionsByName = {};
+            infos.functions.forEach((func) => {
+                infos.functionsByName[func.name] = func;
+            });
+        }
     }
 
     /**
      * Set site config.
      *
-     * @param {any} Config.
+     * @param Config.
      */
     setConfig(config: any): void {
         if (config) {
@@ -387,16 +467,34 @@ export class CoreSite {
     /**
      * Set site logged out.
      *
-     * @param {boolean} loggedOut True if logged out and needs to authenticate again, false otherwise.
+     * @param loggedOut True if logged out and needs to authenticate again, false otherwise.
      */
     setLoggedOut(loggedOut: boolean): void {
         this.loggedOut = !!loggedOut;
     }
 
     /**
+     * Set OAuth ID.
+     *
+     * @param oauth OAuth ID.
+     */
+    setOAuthId(oauthId: number): void {
+        this.oauthId = oauthId;
+    }
+
+    /**
+     * Check if the user authenticated in the site using an OAuth method.
+     *
+     * @return {boolean} Whether the user authenticated in the site using an OAuth method.
+     */
+    isOAuth(): boolean {
+        return this.oauthId != null && typeof this.oauthId != 'undefined';
+    }
+
+    /**
      * Can the user access their private files?
      *
-     * @return {boolean} Whether can access my files.
+     * @return Whether can access my files.
      */
     canAccessMyFiles(): boolean {
         const infos = this.getInfo();
@@ -407,7 +505,7 @@ export class CoreSite {
     /**
      * Can the user download files?
      *
-     * @return {boolean} Whether can download files.
+     * @return Whether can download files.
      */
     canDownloadFiles(): boolean {
         const infos = this.getInfo();
@@ -418,9 +516,9 @@ export class CoreSite {
     /**
      * Can the user use an advanced feature?
      *
-     * @param {string} feature The name of the feature.
-     * @param {boolean} [whenUndefined=true] The value to return when the parameter is undefined.
-     * @return {boolean} Whether can use advanced feature.
+     * @param feature The name of the feature.
+     * @param whenUndefined The value to return when the parameter is undefined.
+     * @return Whether can use advanced feature.
      */
     canUseAdvancedFeature(feature: string, whenUndefined: boolean = true): boolean {
         const infos = this.getInfo();
@@ -444,7 +542,7 @@ export class CoreSite {
     /**
      * Can the user upload files?
      *
-     * @return {boolean} Whether can upload files.
+     * @return Whether can upload files.
      */
     canUploadFiles(): boolean {
         const infos = this.getInfo();
@@ -455,13 +553,14 @@ export class CoreSite {
     /**
      * Fetch site info from the Moodle site.
      *
-     * @return {Promise<any>} A promise to be resolved when the site info is retrieved.
+     * @return A promise to be resolved when the site info is retrieved.
      */
     fetchSiteInfo(): Promise<any> {
         // The get_site_info WS call won't be cached.
         const preSets = {
             getFromCache: false,
-            saveToCache: false
+            saveToCache: false,
+            skipQueue: true
         };
 
         // Reset clean Unicode to check if it's supported again.
@@ -473,10 +572,10 @@ export class CoreSite {
     /**
      * Read some data from the Moodle site using WS. Requests are cached by default.
      *
-     * @param {string} method WS method to use.
-     * @param {any} data Data to send to the WS.
-     * @param {CoreSiteWSPreSets} [preSets] Extra options.
-     * @return {Promise<any>} Promise resolved with the response, rejected with CoreWSError if it fails.
+     * @param method WS method to use.
+     * @param data Data to send to the WS.
+     * @param preSets Extra options.
+     * @return Promise resolved with the response, rejected with CoreWSError if it fails.
      */
     read(method: string, data: any, preSets?: CoreSiteWSPreSets): Promise<any> {
         preSets = preSets || {};
@@ -486,6 +585,9 @@ export class CoreSite {
         if (typeof preSets.saveToCache == 'undefined') {
             preSets.saveToCache = true;
         }
+        if (typeof preSets.reusePending == 'undefined') {
+            preSets.reusePending = true;
+        }
 
         return this.request(method, data, preSets);
     }
@@ -493,10 +595,10 @@ export class CoreSite {
     /**
      * Sends some data to the Moodle site using WS. Requests are NOT cached by default.
      *
-     * @param {string} method  WS method to use.
-     * @param {any} data Data to send to the WS.
-     * @param {CoreSiteWSPreSets} [preSets] Extra options.
-     * @return {Promise<any>} Promise resolved with the response, rejected with CoreWSError if it fails.
+     * @param method WS method to use.
+     * @param data Data to send to the WS.
+     * @param preSets Extra options.
+     * @return Promise resolved with the response, rejected with CoreWSError if it fails.
      */
     write(method: string, data: any, preSets?: CoreSiteWSPreSets): Promise<any> {
         preSets = preSets || {};
@@ -516,11 +618,11 @@ export class CoreSite {
     /**
      * WS request to the site.
      *
-     * @param {string} method The WebService method to be called.
-     * @param {any} data Arguments to pass to the method.
-     * @param {CoreSiteWSPreSets} preSets Extra options.
-     * @param {boolean} [retrying] True if we're retrying the call for some reason. This is to prevent infinite loops.
-     * @return {Promise<any>} Promise resolved with the response, rejected with CoreWSError if it fails.
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra options.
+     * @param retrying True if we're retrying the call for some reason. This is to prevent infinite loops.
+     * @return Promise resolved with the response, rejected with CoreWSError if it fails.
      * @description
      *
      * Sends a webservice request to the site. This method will automatically add the
@@ -559,7 +661,8 @@ export class CoreSite {
             siteUrl: this.siteUrl,
             cleanUnicode: this.cleanUnicode,
             typeExpected: preSets.typeExpected,
-            responseExpected: preSets.responseExpected
+            responseExpected: preSets.responseExpected,
+            splitRequest: preSets.splitRequest,
         };
 
         if (wsPreSets.cleanUnicode && this.textUtils.hasUnicodeData(data)) {
@@ -583,28 +686,44 @@ export class CoreSite {
 
         const originalData = data;
 
-        // Convert the values to string before starting the cache process.
-        try {
-            data = this.wsProvider.convertValuesToString(data, wsPreSets.cleanUnicode);
-        } catch (e) {
+        // Convert arguments to strings before starting the cache process.
+        data = this.wsProvider.convertValuesToString(data, wsPreSets.cleanUnicode);
+        if (data == null) {
             // Empty cleaned text found.
             return Promise.reject(this.utils.createFakeWSError('core.unicodenotsupportedcleanerror', true));
         }
 
-        return this.getFromCache(method, data, preSets, false, originalData).catch(() => {
-            // Do not pass those options to the core WS factory.
-            return this.wsProvider.call(method, data, wsPreSets).then((response) => {
+        const cacheId = this.getCacheId(method, data);
+
+        // Check for an ongoing identical request if we're not ignoring cache.
+        if (preSets.getFromCache && this.ongoingRequests[cacheId]) {
+            return this.ongoingRequests[cacheId].then((response) => {
+                // Clone the data, this may prevent errors if in the callback the object is modified.
+                return this.utils.clone(response);
+            });
+        }
+
+        const promise = this.getFromCache(method, data, preSets, false, originalData).catch(() => {
+            if (preSets.forceOffline) {
+                // Don't call the WS, just fail.
+                return Promise.reject(this.wsProvider.createFakeWSError('core.cannotconnect', true,
+                    {$a: CoreSite.MINIMUM_MOODLE_VERSION}));
+            }
+
+            // Call the WS.
+            return this.callOrEnqueueRequest(method, data, preSets, wsPreSets).then((response) => {
                 if (preSets.saveToCache) {
                     this.saveToCache(method, data, response, preSets);
                 }
 
-                // We pass back a clone of the original object, this may prevent errors if in the callback the object is modified.
-                return this.utils.clone(response);
+                return response;
             }).catch((error) => {
                 if (error.errorcode == 'invalidtoken' ||
                     (error.errorcode == 'accessexception' && error.message.indexOf('Invalid token - token expired') > -1)) {
                     if (initialToken !== this.token && !retrying) {
                         // Token has changed, retry with the new token.
+                        preSets.getFromCache = false; // Don't check cache now. Also, it will skip ongoingRequests.
+
                         return this.request(method, data, preSets, true);
                     } else if (this.appProvider.isSSOAuthenticationOngoing()) {
                         // There's an SSO authentication ongoing, wait for it to finish and try again.
@@ -615,7 +734,7 @@ export class CoreSite {
 
                     // Session expired, trigger event.
                     this.eventsProvider.trigger(CoreEventsProvider.SESSION_EXPIRED, {}, this.id);
-                    // Change error message. We'll try to get data from cache.
+                    // Change error message. Try to get data from cache, the event will handle the error.
                     error.message = this.translate.instant('core.lostconnection');
                 } else if (error.errorcode === 'userdeleted') {
                     // User deleted, trigger event.
@@ -624,21 +743,19 @@ export class CoreSite {
 
                     return Promise.reject(error);
                 } else if (error.errorcode === 'forcepasswordchangenotice') {
-                    // Password Change Forced, trigger event.
+                    // Password Change Forced, trigger event. Try to get data from cache, the event will handle the error.
                     this.eventsProvider.trigger(CoreEventsProvider.PASSWORD_CHANGE_FORCED, {}, this.id);
                     error.message = this.translate.instant('core.forcepasswordchangenotice');
 
-                    return Promise.reject(error);
                 } else if (error.errorcode === 'usernotfullysetup') {
-                    // User not fully setup, trigger event.
+                    // User not fully setup, trigger event. Try to get data from cache, the event will handle the error.
                     this.eventsProvider.trigger(CoreEventsProvider.USER_NOT_FULLY_SETUP, {}, this.id);
                     error.message = this.translate.instant('core.usernotfullysetup');
 
-                    return Promise.reject(error);
                 } else if (error.errorcode === 'sitepolicynotagreed') {
                     // Site policy not agreed, trigger event.
                     this.eventsProvider.trigger(CoreEventsProvider.SITE_POLICY_NOT_AGREED, {}, this.id);
-                    error.message = this.translate.instant('core.sitepolicynotagreederror');
+                    error.message = this.translate.instant('core.login.sitepolicynotagreederror');
 
                     return Promise.reject(error);
                 } else if (error.errorcode === 'dmlwriteexception' && this.textUtils.hasUnicodeData(data)) {
@@ -650,6 +767,24 @@ export class CoreSite {
                     }
                     // This should not happen.
                     error.message = this.translate.instant('core.unicodenotsupported');
+
+                    return Promise.reject(error);
+                } else if (error.exception === 'required_capability_exception' || error.errorcode === 'nopermission' ||
+                        error.errorcode === 'notingroup') {
+                    // Translate error messages with missing strings.
+                    if (error.message === 'error/nopermission') {
+                        error.message = this.translate.instant('core.nopermissionerror');
+                    } else if (error.message === 'error/notingroup') {
+                        error.message = this.translate.instant('core.notingroup');
+                    }
+
+                    // Save the error instead of deleting the cache entry so the same content is displayed in offline.
+                    this.saveToCache(method, data, error, preSets);
+
+                    return Promise.reject(error);
+                } else if (preSets.cacheErrors && preSets.cacheErrors.indexOf(error.errorcode) != -1) {
+                    // Save the error instead of deleting the cache entry so the same content is displayed in offline.
+                    this.saveToCache(method, data, error, preSets);
 
                     return Promise.reject(error);
                 } else if (typeof preSets.emergencyCache !== 'undefined' && !preSets.emergencyCache) {
@@ -675,26 +810,195 @@ export class CoreSite {
                     return Promise.reject(error);
                 });
             });
+        }).then((response) => {
+            // Check if the response is an error, this happens if the error was stored in the cache.
+            if (response && (typeof response.exception != 'undefined' || typeof response.errorcode != 'undefined')) {
+                return Promise.reject(response);
+            }
+
+            return response;
+        });
+
+        this.ongoingRequests[cacheId] = promise;
+
+        // Clear ongoing request after setting the promise (just in case it's already resolved).
+        return promise.finally(() => {
+            // Make sure we don't clear the promise of a newer request that ignores the cache.
+            if (this.ongoingRequests[cacheId] === promise) {
+                delete this.ongoingRequests[cacheId];
+            }
+        }).then((response) => {
+            // We pass back a clone of the original object, this may prevent errors if in the callback the object is modified.
+            return this.utils.clone(response);
+        });
+    }
+
+    /**
+     * Adds a request to the queue or calls it immediately when not using the queue.
+     *
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra options related to the site.
+     * @param wsPreSets Extra options related to the WS call.
+     * @return Promise resolved with the response when the WS is called.
+     */
+    protected callOrEnqueueRequest(method: string, data: any, preSets: CoreSiteWSPreSets, wsPreSets: CoreWSPreSets): Promise<any> {
+        if (preSets.skipQueue || !this.wsAvailable('tool_mobile_call_external_functions')) {
+            return this.wsProvider.call(method, data, wsPreSets);
+        }
+
+        const cacheId = this.getCacheId(method, data);
+
+        // Check if there is an identical request waiting in the queue (read requests only by default).
+        if (preSets.reusePending) {
+            const request = this.requestQueue.find((request) => request.cacheId == cacheId);
+            if (request) {
+                return request.deferred.promise;
+            }
+        }
+
+        const request: RequestQueueItem = {
+            cacheId,
+            method,
+            data,
+            preSets,
+            wsPreSets,
+            deferred: {}
+        };
+
+        request.deferred.promise = new Promise((resolve, reject): void => {
+            request.deferred.resolve = resolve;
+            request.deferred.reject = reject;
+        });
+
+        return this.enqueueRequest(request);
+    }
+
+    /**
+     * Adds a request to the queue.
+     *
+     * @param request The request to enqueue.
+     * @return Promise resolved with the response when the WS is called.
+     */
+    protected enqueueRequest(request: RequestQueueItem): Promise<any> {
+
+        this.requestQueue.push(request);
+
+        if (this.requestQueue.length >= CoreSite.REQUEST_QUEUE_LIMIT) {
+            this.processRequestQueue();
+        } else if (!this.requestQueueTimeout) {
+            this.requestQueueTimeout = setTimeout(this.processRequestQueue.bind(this), CoreSite.REQUEST_QUEUE_DELAY);
+        }
+
+        return request.deferred.promise;
+    }
+
+    /**
+     * Call the enqueued web service requests.
+     */
+    protected processRequestQueue(): void {
+        this.logger.debug(`Processing request queue (${this.requestQueue.length} requests)`);
+
+        // Clear timeout if set.
+        if (this.requestQueueTimeout) {
+            clearTimeout(this.requestQueueTimeout);
+            this.requestQueueTimeout = null;
+        }
+
+        // Extract all requests from the queue.
+        const requests = this.requestQueue;
+        this.requestQueue = [];
+
+        if (requests.length == 1 && !CoreSite.REQUEST_QUEUE_FORCE_WS) {
+            // Only one request, do a regular web service call.
+            this.wsProvider.call(requests[0].method, requests[0].data, requests[0].wsPreSets).then((data) => {
+                requests[0].deferred.resolve(data);
+            }).catch((error) => {
+                requests[0].deferred.reject(error);
+            });
+
+            return;
+        }
+
+        const data = {
+            requests: requests.map((request) => {
+                const args = {};
+                const settings = {};
+
+                // Separate WS settings from function arguments.
+                Object.keys(request.data).forEach((key) => {
+                    let value = request.data[key];
+                    const match = /^moodlews(setting.*)$/.exec(key);
+                    if (match) {
+                        if (match[1] == 'settingfilter' || match[1] == 'settingfileurl') {
+                            // Undo special treatment of these settings in CoreWSProvider.convertValuesToString.
+                            value = (value == 'true' ? '1' : '0');
+                        }
+                        settings[match[1]] = value;
+                    } else {
+                        args[key] = value;
+                    }
+                });
+
+                return {
+                    function: request.method,
+                    arguments: JSON.stringify(args),
+                    ...settings
+                };
+            })
+        };
+
+        const wsPresets: CoreWSPreSets = {
+            siteUrl: this.siteUrl,
+            wsToken: this.token,
+        };
+
+        this.wsProvider.call('tool_mobile_call_external_functions', data, wsPresets).then((data) => {
+            if (!data || !data.responses) {
+                return Promise.reject(null);
+            }
+
+            requests.forEach((request, i) => {
+                const response = data.responses[i];
+
+                if (!response) {
+                    // Request not executed, enqueue again.
+                    this.enqueueRequest(request);
+                } else if (response.error) {
+                    request.deferred.reject(this.textUtils.parseJSON(response.exception));
+                } else {
+                    let responseData = this.textUtils.parseJSON(response.data);
+                    // Match the behaviour of CoreWSProvider.call when no response is expected.
+                    const responseExpected = typeof wsPresets.responseExpected == 'undefined' || wsPresets.responseExpected;
+                    if (!responseExpected && (responseData == null || responseData === '')) {
+                        responseData = {};
+                    }
+                    request.deferred.resolve(responseData);
+                }
+            });
+
+        }).catch((error) => {
+            // Error not specific to a single request, reject all promises.
+            requests.forEach((request) => {
+                request.deferred.reject(error);
+            });
         });
     }
 
     /**
      * Check if a WS is available in this site.
      *
-     * @param {string} method WS name.
-     * @param {boolean} [checkPrefix=true] When true also checks with the compatibility prefix.
-     * @return {boolean} Whether the WS is available.
+     * @param method WS name.
+     * @param checkPrefix When true also checks with the compatibility prefix.
+     * @return Whether the WS is available.
      */
     wsAvailable(method: string, checkPrefix: boolean = true): boolean {
         if (typeof this.infos == 'undefined') {
             return false;
         }
 
-        for (let i = 0; i < this.infos.functions.length; i++) {
-            const func = this.infos.functions[i];
-            if (func.name == method) {
-                return true;
-            }
+        if (this.infos.functionsByName[method]) {
+            return true;
         }
 
         // Let's try again with the compatibility prefix.
@@ -708,9 +1012,9 @@ export class CoreSite {
     /**
      * Get cache ID.
      *
-     * @param {string} method The WebService method.
-     * @param {any} data Arguments to pass to the method.
-     * @return {string} Cache ID.
+     * @param method The WebService method.
+     * @param data Arguments to pass to the method.
+     * @return Cache ID.
      */
     protected getCacheId(method: string, data: any): string {
         return <string> Md5.hashAsciiStr(method + ':' + this.utils.sortAndStringify(data));
@@ -719,9 +1023,9 @@ export class CoreSite {
     /**
      * Get the cache ID used in Ionic 1 version of the app.
      *
-     * @param {string} method The WebService method.
-     * @param {any} data Arguments to pass to the method.
-     * @return {string} Cache ID.
+     * @param method The WebService method.
+     * @param data Arguments to pass to the method.
+     * @return Cache ID.
      */
     protected getCacheOldId(method: string, data: any): string {
         return <string> Md5.hashAsciiStr(method + ':' +  JSON.stringify(data));
@@ -730,12 +1034,12 @@ export class CoreSite {
     /**
      * Get a WS response from cache.
      *
-     * @param {string} method The WebService method to be called.
-     * @param {any} data Arguments to pass to the method.
-     * @param {CoreSiteWSPreSets} preSets Extra options.
-     * @param {boolean} [emergency] Whether it's an "emergency" cache call (WS call failed).
-     * @param {any} [originalData] Arguments to pass to the method before being converted to strings.
-     * @return {Promise<any>} Promise resolved with the WS response.
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra options.
+     * @param emergency Whether it's an "emergency" cache call (WS call failed).
+     * @param originalData Arguments to pass to the method before being converted to strings.
+     * @return Promise resolved with the WS response.
      */
     protected getFromCache(method: string, data: any, preSets: CoreSiteWSPreSets, emergency?: boolean, originalData?: any)
             : Promise<any> {
@@ -747,10 +1051,10 @@ export class CoreSite {
         let promise;
 
         if (preSets.getCacheUsingCacheKey || (emergency && preSets.getEmergencyCacheUsingCacheKey)) {
-            promise = this.db.getRecords(this.WS_CACHE_TABLE, { key: preSets.cacheKey }).then((entries) => {
+            promise = this.db.getRecords(CoreSite.WS_CACHE_TABLE, { key: preSets.cacheKey }).then((entries) => {
                 if (!entries.length) {
                     // Cache key not found, get by params sent.
-                    return this.db.getRecord(this.WS_CACHE_TABLE, { id: id });
+                    return this.db.getRecord(CoreSite.WS_CACHE_TABLE, { id: id });
                 } else if (entries.length > 1) {
                     // More than one entry found. Search the one with same ID as this call.
                     for (let i = 0, len = entries.length; i < len; i++) {
@@ -764,13 +1068,13 @@ export class CoreSite {
                 return entries[0];
             });
         } else {
-            promise = this.db.getRecord(this.WS_CACHE_TABLE, { id: id }).catch(() => {
+            promise = this.db.getRecord(CoreSite.WS_CACHE_TABLE, { id: id }).catch(() => {
                 // Entry not found, try to get it using the old ID.
                 const oldId = this.getCacheOldId(method, originalData || {});
 
-                return this.db.getRecord(this.WS_CACHE_TABLE, { id: oldId }).then((entry) => {
+                return this.db.getRecord(CoreSite.WS_CACHE_TABLE, { id: oldId }).then((entry) => {
                     // Update the entry ID to use the new one.
-                    this.db.updateRecords(this.WS_CACHE_TABLE, {id: id}, {id: oldId});
+                    this.db.updateRecords(CoreSite.WS_CACHE_TABLE, {id: id}, {id: oldId});
 
                     return entry;
                 });
@@ -779,11 +1083,14 @@ export class CoreSite {
 
         return promise.then((entry) => {
             const now = Date.now();
+            let expirationTime;
 
-            preSets.omitExpires = preSets.omitExpires || !this.appProvider.isOnline();
+            preSets.omitExpires = preSets.omitExpires || preSets.forceOffline || !this.appProvider.isOnline();
 
             if (!preSets.omitExpires) {
-                if (now > entry.expirationTime) {
+                expirationTime = entry.expirationTime + this.getExpirationDelay(preSets.updateFrequency);
+
+                if (now > expirationTime) {
                     this.logger.debug('Cached element found, but it is expired');
 
                     return Promise.reject(null);
@@ -791,8 +1098,12 @@ export class CoreSite {
             }
 
             if (typeof entry != 'undefined' && typeof entry.data != 'undefined') {
-                const expires = (entry.expirationTime - now) / 1000;
-                this.logger.info(`Cached element found, id: ${id} expires in ${expires} seconds`);
+                if (!expirationTime) {
+                    this.logger.info(`Cached element found, id: ${id}. Expiration time ignored.`);
+                } else {
+                    const expires = (expirationTime - now) / 1000;
+                    this.logger.info(`Cached element found, id: ${id}. Expires in expires in ${expires} seconds`);
+                }
 
                 return this.textUtils.parseJSON(entry.data, {});
             }
@@ -802,13 +1113,32 @@ export class CoreSite {
     }
 
     /**
+     * Gets the size of cached data for a specific component or component instance.
+     *
+     * @param component Component name
+     * @param componentId Optional component id (if not included, returns sum for whole component)
+     * @return Promise resolved when we have calculated the size
+     */
+    getComponentCacheSize(component: string, componentId?: number): Promise<number> {
+        const params: any[] = [component];
+        let extraClause = '';
+        if (componentId !== undefined && componentId !== null) {
+            params.push(componentId);
+            extraClause = ' AND componentId = ?';
+        }
+
+        return this.db.getFieldSql('SELECT SUM(length(data)) FROM ' + CoreSite.WS_CACHE_TABLE +
+                ' WHERE component = ?' + extraClause, params);
+    }
+
+    /**
      * Save a WS response to cache.
      *
-     * @param {string} method The WebService method.
-     * @param {any} data Arguments to pass to the method.
-     * @param {any} response The WS response.
-     * @param {CoreSiteWSPreSets} preSets Extra options.
-     * @return {Promise<any>} Promise resolved when the response is saved.
+     * @param method The WebService method.
+     * @param data Arguments to pass to the method.
+     * @param response The WS response.
+     * @param preSets Extra options.
+     * @return Promise resolved when the response is saved.
      */
     protected saveToCache(method: string, data: any, response: any, preSets: CoreSiteWSPreSets): Promise<any> {
         if (!this.db) {
@@ -827,31 +1157,38 @@ export class CoreSite {
         }
 
         return promise.then(() => {
+            // Since 3.7, the expiration time contains the time the entry is modified instead of the expiration time.
+            // We decided to reuse this field to prevent modifying the database table.
             const id = this.getCacheId(method, data),
                 entry: any = {
                     id: id,
-                    data: JSON.stringify(response)
+                    data: JSON.stringify(response),
+                    expirationTime: Date.now()
                 };
-            let cacheExpirationTime = CoreConfigConstants.cache_expiration_time;
 
-            cacheExpirationTime = isNaN(cacheExpirationTime) ? 300000 : cacheExpirationTime;
-            entry.expirationTime = new Date().getTime() + cacheExpirationTime;
             if (preSets.cacheKey) {
                 entry.key = preSets.cacheKey;
             }
 
-            return this.db.insertRecord(this.WS_CACHE_TABLE, entry);
+            if (preSets.component) {
+                entry.component = preSets.component;
+                if (preSets.componentId) {
+                    entry.componentId = preSets.componentId;
+                }
+            }
+
+            return this.db.insertRecord(CoreSite.WS_CACHE_TABLE, entry);
         });
     }
 
     /**
      * Delete a WS cache entry or entries.
      *
-     * @param {string} method The WebService method to be called.
-     * @param {any} data Arguments to pass to the method.
-     * @param {CoreSiteWSPreSets} preSets Extra options.
-     * @param {boolean} [allCacheKey] True to delete all entries with the cache key, false to delete only by ID.
-     * @return {Promise<any>} Promise resolved when the entries are deleted.
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra options.
+     * @param allCacheKey True to delete all entries with the cache key, false to delete only by ID.
+     * @return Promise resolved when the entries are deleted.
      */
     protected deleteFromCache(method: string, data: any, preSets: CoreSiteWSPreSets, allCacheKey?: boolean): Promise<any> {
         if (!this.db) {
@@ -861,19 +1198,46 @@ export class CoreSite {
         const id = this.getCacheId(method, data);
 
         if (allCacheKey) {
-            return this.db.deleteRecords(this.WS_CACHE_TABLE, { key: preSets.cacheKey });
+            return this.db.deleteRecords(CoreSite.WS_CACHE_TABLE, { key: preSets.cacheKey });
         }
 
-        return this.db.deleteRecords(this.WS_CACHE_TABLE, { id: id });
+        return this.db.deleteRecords(CoreSite.WS_CACHE_TABLE, { id: id });
+    }
+
+    /**
+     * Deletes WS cache entries for all methods relating to a specific component (and
+     * optionally component id).
+     *
+     * @param component Component name.
+     * @param componentId Component id.
+     * @return Promise resolved when the entries are deleted.
+     */
+    async deleteComponentFromCache(component: string, componentId?: number): Promise<void> {
+        if (!component) {
+            return;
+        }
+
+        if (!this.db) {
+            throw new Error('Site DB not initialized');
+        }
+
+        const params = {
+            component: component
+        } as any;
+        if (componentId) {
+            params.componentId = componentId;
+        }
+
+        return this.db.deleteRecords(CoreSite.WS_CACHE_TABLE, params);
     }
 
     /*
      * Uploads a file using Cordova File API.
      *
-     * @param {string} filePath File path.
-     * @param {CoreWSFileUploadOptions} options File upload options.
-     * @param {Function} [onProgress] Function to call on progress.
-     * @return {Promise<any>} Promise resolved when uploaded.
+     * @param filePath File path.
+     * @param options File upload options.
+     * @param onProgress Function to call on progress.
+     * @return Promise resolved when uploaded.
      */
     uploadFile(filePath: string, options: CoreWSFileUploadOptions, onProgress?: (event: ProgressEvent) => any): Promise<any> {
         if (!options.fileArea) {
@@ -889,7 +1253,7 @@ export class CoreSite {
     /**
      * Invalidates all the cache entries.
      *
-     * @return {Promise<any>} Promise resolved when the cache entries are invalidated.
+     * @return Promise resolved when the cache entries are invalidated.
      */
     invalidateWsCache(): Promise<any> {
         if (!this.db) {
@@ -898,14 +1262,16 @@ export class CoreSite {
 
         this.logger.debug('Invalidate all the cache for site: ' + this.id);
 
-        return this.db.updateRecords(this.WS_CACHE_TABLE, { expirationTime: 0 });
+        return this.db.updateRecords(CoreSite.WS_CACHE_TABLE, { expirationTime: 0 }).finally(() => {
+            this.eventsProvider.trigger(CoreEventsProvider.WS_CACHE_INVALIDATED, {}, this.getId());
+        });
     }
 
     /**
      * Invalidates all the cache entries with a certain key.
      *
-     * @param {string} key Key to search.
-     * @return {Promise<any>} Promise resolved when the cache entries are invalidated.
+     * @param key Key to search.
+     * @return Promise resolved when the cache entries are invalidated.
      */
     invalidateWsCacheForKey(key: string): Promise<any> {
         if (!this.db) {
@@ -917,14 +1283,14 @@ export class CoreSite {
 
         this.logger.debug('Invalidate cache for key: ' + key);
 
-        return this.db.updateRecords(this.WS_CACHE_TABLE, { expirationTime: 0 }, { key: key });
+        return this.db.updateRecords(CoreSite.WS_CACHE_TABLE, { expirationTime: 0 }, { key: key });
     }
 
     /**
      * Invalidates all the cache entries in an array of keys.
      *
-     * @param {string[]} keys Keys to search.
-     * @return {Promise<any>} Promise resolved when the cache entries are invalidated.
+     * @param keys Keys to search.
+     * @return Promise resolved when the cache entries are invalidated.
      */
     invalidateMultipleWsCacheForKey(keys: string[]): Promise<any> {
         if (!this.db) {
@@ -947,8 +1313,8 @@ export class CoreSite {
     /**
      * Invalidates all the cache entries whose key starts with a certain value.
      *
-     * @param {string} key Key to search.
-     * @return {Promise}    Promise resolved when the cache entries are invalidated.
+     * @param key Key to search.
+     * @return Promise resolved when the cache entries are invalidated.
      */
     invalidateWsCacheForKeyStartingWith(key: string): Promise<any> {
         if (!this.db) {
@@ -960,26 +1326,41 @@ export class CoreSite {
 
         this.logger.debug('Invalidate cache for key starting with: ' + key);
 
-        const sql = 'UPDATE ' + this.WS_CACHE_TABLE + ' SET expirationTime=0 WHERE key LIKE ?';
+        const sql = 'UPDATE ' + CoreSite.WS_CACHE_TABLE + ' SET expirationTime=0 WHERE key LIKE ?';
 
         return this.db.execute(sql, [key + '%']);
+    }
+
+    /**
+     * Check if tokenpluginfile can be used, and fix the URL afterwards.
+     *
+     * @param url The url to be fixed.
+     * @return Promise resolved with the fixed URL.
+     */
+    checkAndFixPluginfileURL(url: string): Promise<string> {
+        return this.checkTokenPluginFile(url).then(() => {
+            return this.fixPluginfileURL(url);
+        });
     }
 
     /**
      * Generic function for adding the wstoken to Moodle urls and for pointing to the correct script.
      * Uses CoreUtilsProvider.fixPluginfileURL, passing site's token.
      *
-     * @param {string} url The url to be fixed.
-     * @return {string} Fixed URL.
+     * @param url The url to be fixed.
+     * @return Fixed URL.
      */
     fixPluginfileURL(url: string): string {
-        return this.urlUtils.fixPluginfileURL(url, this.token, this.siteUrl);
+        const accessKey = this.tokenPluginFileWorks || typeof this.tokenPluginFileWorks == 'undefined' ?
+                this.infos && this.infos.userprivateaccesskey : undefined;
+
+        return this.urlUtils.fixPluginfileURL(url, this.token, this.siteUrl, accessKey);
     }
 
     /**
      * Deletes site's DB.
      *
-     * @return {Promise<any>} Promise to be resolved when the DB is deleted.
+     * @return Promise to be resolved when the DB is deleted.
      */
     deleteDB(): Promise<any> {
         return this.dbProvider.deleteDB('Site-' + this.id);
@@ -988,7 +1369,7 @@ export class CoreSite {
     /**
      * Deletes site's folder.
      *
-     * @return {Promise<any>} Promise to be resolved when the DB is deleted.
+     * @return Promise to be resolved when the DB is deleted.
      */
     deleteFolder(): Promise<any> {
         if (this.fileProvider.isAvailable()) {
@@ -1005,7 +1386,7 @@ export class CoreSite {
     /**
      * Get space usage of the site.
      *
-     * @return {Promise<number>} Promise resolved with the site space usage (size).
+     * @return Promise resolved with the site space usage (size).
      */
     getSpaceUsage(): Promise<number> {
         if (this.fileProvider.isAvailable()) {
@@ -1020,10 +1401,33 @@ export class CoreSite {
     }
 
     /**
+     * Gets an approximation of the cache table usage of the site.
+     *
+     * Currently this is just the total length of the data fields in the cache table.
+     *
+     * @return Promise resolved with the total size of all data in the cache table (bytes)
+     */
+    getCacheUsage(): Promise<number> {
+        return this.db.getFieldSql('SELECT SUM(length(data)) FROM ' + CoreSite.WS_CACHE_TABLE);
+    }
+
+    /**
+     * Gets a total of the file and cache usage.
+     *
+     * @return Promise with the total of getSpaceUsage and getCacheUsage
+     */
+    async getTotalUsage(): Promise<number> {
+        const space = await this.getSpaceUsage();
+        const cache = await this.getCacheUsage();
+
+        return space + cache;
+    }
+
+    /**
      * Returns the URL to the documentation of the app, based on Moodle version and current language.
      *
-     * @param {string} [page] Docs page to go to.
-     * @return {Promise<string>} Promise resolved with the Moodle docs URL.
+     * @param page Docs page to go to.
+     * @return Promise resolved with the Moodle docs URL.
      */
     getDocsUrl(page?: string): Promise<string> {
         const release = this.infos.release ? this.infos.release : undefined;
@@ -1032,66 +1436,90 @@ export class CoreSite {
     }
 
     /**
+     * Returns a url to link an specific page on the site.
+     *
+     * @param path Path of the url to go to.
+     * @param params Object with the params to add.
+     * @param anchor Anchor text if needed.
+     * @return URL with params.
+     */
+    createSiteUrl(path: string, params?: {[key: string]: any}, anchor?: string): string {
+        return this.urlUtils.addParamsToUrl(this.siteUrl + path, params, anchor);
+    }
+
+    /**
      * Check if the local_mobile plugin is installed in the Moodle site.
      *
-     * @param {boolean} [retrying] True if we're retrying the check.
-     * @return {Promise<LocalMobileResponse>} Promise resolved when the check is done.
+     * @param retrying True if we're retrying the check.
+     * @return Promise resolved when the check is done.
      */
-    checkLocalMobilePlugin(retrying?: boolean): Promise<LocalMobileResponse> {
+    async checkLocalMobilePlugin(retrying?: boolean): Promise<LocalMobileResponse> {
         const checkUrl = this.siteUrl + '/local/mobile/check.php',
             service = CoreConfigConstants.wsextservice;
 
         if (!service) {
             // External service not defined.
-            return Promise.resolve({ code: 0 });
+            return { code: 0 };
         }
 
-        const promise = this.http.post(checkUrl, { service: service }).timeout(CoreConstants.WS_TIMEOUT).toPromise();
+        let data;
 
-        return promise.then((data: any) => {
-            if (typeof data != 'undefined' && data.errorcode === 'requirecorrectaccess') {
-                if (!retrying) {
-                    this.siteUrl = this.urlUtils.addOrRemoveWWW(this.siteUrl);
+        try {
+            const response = await this.wsProvider.sendHTTPRequest(checkUrl, {
+                method: 'post',
+                data: { service: service },
+            });
 
-                    return this.checkLocalMobilePlugin(true);
-                } else {
-                    return Promise.reject(data.error);
-                }
-            } else if (typeof data == 'undefined' || typeof data.code == 'undefined') {
-                // The local_mobile returned something we didn't expect. Let's assume it's not installed.
-                return { code: 0, warning: 'core.login.localmobileunexpectedresponse' };
-            }
-
-            const code = parseInt(data.code, 10);
-            if (data.error) {
-                switch (code) {
-                    case 1:
-                        // Site in maintenance mode.
-                        return Promise.reject(this.translate.instant('core.login.siteinmaintenance'));
-                    case 2:
-                        // Web services not enabled.
-                        return Promise.reject(this.translate.instant('core.login.webservicesnotenabled'));
-                    case 3:
-                        // Extended service not enabled, but the official is enabled.
-                        return { code: 0 };
-                    case 4:
-                        // Neither extended or official services enabled.
-                        return Promise.reject(this.translate.instant('core.login.mobileservicesnotenabled'));
-                    default:
-                        return Promise.reject(this.translate.instant('core.unexpectederror'));
-                }
-            } else {
-                return { code: code, service: service, coreSupported: !!data.coresupported };
-            }
-        }, () => {
+            data = response.body;
+        } catch (ex) {
             return { code: 0 };
-        });
+        }
+
+        if (data === null) {
+            // This probably means that the server was configured to return null for non-existing URLs. Not installed.
+            return { code: 0 };
+        }
+
+        if (typeof data != 'undefined' && data.errorcode === 'requirecorrectaccess') {
+            if (!retrying) {
+                this.siteUrl = this.urlUtils.addOrRemoveWWW(this.siteUrl);
+
+                return this.checkLocalMobilePlugin(true);
+            } else {
+                throw data.error;
+            }
+        } else if (typeof data == 'undefined' || typeof data.code == 'undefined') {
+            // The local_mobile returned something we didn't expect. Let's assume it's not installed.
+            return { code: 0, warning: 'core.login.localmobileunexpectedresponse' };
+        }
+
+        const code = parseInt(data.code, 10);
+        if (data.error) {
+            switch (code) {
+                case 1:
+                    // Site in maintenance mode.
+                    throw this.translate.instant('core.login.siteinmaintenance');
+                case 2:
+                    // Web services not enabled.
+                    throw this.translate.instant('core.login.webservicesnotenabled');
+                case 3:
+                    // Extended service not enabled, but the official is enabled.
+                    return { code: 0 };
+                case 4:
+                    // Neither extended or official services enabled.
+                    throw this.translate.instant('core.login.mobileservicesnotenabled');
+                default:
+                    throw this.translate.instant('core.unexpectederror');
+            }
+        } else {
+            return { code: code, service: service, coreSupported: !!data.coresupported };
+        }
     }
 
     /**
      * Check if local_mobile has been installed in Moodle.
      *
-     * @return {boolean} Whether the App is able to use local_mobile plugin for this site.
+     * @return Whether the App is able to use local_mobile plugin for this site.
      */
     checkIfAppUsesLocalMobile(): boolean {
         let appUsesLocalMobile = false;
@@ -1112,7 +1540,7 @@ export class CoreSite {
     /**
      * Check if local_mobile has been installed in Moodle but the app is not using it.
      *
-     * @return {Promise<any>} Promise resolved it local_mobile was added, rejected otherwise.
+     * @return Promise resolved it local_mobile was added, rejected otherwise.
      */
     checkIfLocalMobileInstalledAndNotUsed(): Promise<any> {
         const appUsesLocalMobile = this.checkIfAppUsesLocalMobile();
@@ -1135,16 +1563,16 @@ export class CoreSite {
     /**
      * Check if a URL belongs to this site.
      *
-     * @param {string} url URL to check.
-     * @return {boolean} Whether the URL belongs to this site.
+     * @param url URL to check.
+     * @return Whether the URL belongs to this site.
      */
     containsUrl(url: string): boolean {
         if (!url) {
             return false;
         }
 
-        const siteUrl = this.urlUtils.removeProtocolAndWWW(this.siteUrl);
-        url = this.urlUtils.removeProtocolAndWWW(url);
+        const siteUrl = this.textUtils.addEndingSlash(this.urlUtils.removeProtocolAndWWW(this.siteUrl));
+        url = this.textUtils.addEndingSlash(this.urlUtils.removeProtocolAndWWW(url));
 
         return url.indexOf(siteUrl) == 0;
     }
@@ -1152,10 +1580,33 @@ export class CoreSite {
     /**
      * Get the public config of this site.
      *
-     * @return {Promise<any>} Promise resolved with public config. Rejected with an object if error, see CoreWSProvider.callAjax.
+     * @return Promise resolved with public config. Rejected with an object if error, see CoreWSProvider.callAjax.
      */
     getPublicConfig(): Promise<any> {
-        return this.wsProvider.callAjax('tool_mobile_get_public_config', {}, { siteUrl: this.siteUrl }).then((config) => {
+        const preSets: CoreWSAjaxPreSets = {
+            siteUrl: this.siteUrl
+        };
+
+        return this.wsProvider.callAjax('tool_mobile_get_public_config', {}, preSets).catch((error) => {
+
+            if ((!this.getInfo() || this.isVersionGreaterEqualThan('3.8')) && error && error.errorcode == 'codingerror') {
+                // This error probably means that there is a redirect in the site. Try to use a GET request.
+                preSets.noLogin = true;
+                preSets.useGet = true;
+
+                return this.wsProvider.callAjax('tool_mobile_get_public_config', {}, preSets).catch((error2) => {
+                    if (this.getInfo() && this.isVersionGreaterEqualThan('3.8')) {
+                        // GET is supported, return the second error.
+                        return Promise.reject(error2);
+                    } else {
+                        // GET not supported or we don't know if it's supported. Return first error.
+                        return Promise.reject(error);
+                    }
+                });
+            }
+
+            return Promise.reject(error);
+        }).then((config) => {
             // Use the wwwroot returned by the server.
             if (config.httpswwwroot) {
                 this.siteUrl = config.httpswwwroot;
@@ -1168,9 +1619,9 @@ export class CoreSite {
     /**
      * Open a URL in browser using auto-login in the Moodle site if available.
      *
-     * @param {string} url The URL to open.
-     * @param {string} [alertMessage] If defined, an alert will be shown before opening the browser.
-     * @return {Promise<any>} Promise resolved when done, rejected otherwise.
+     * @param url The URL to open.
+     * @param alertMessage If defined, an alert will be shown before opening the browser.
+     * @return Promise resolved when done, rejected otherwise.
      */
     openInBrowserWithAutoLogin(url: string, alertMessage?: string): Promise<any> {
         return this.openWithAutoLogin(false, url, undefined, alertMessage);
@@ -1179,9 +1630,9 @@ export class CoreSite {
     /**
      * Open a URL in browser using auto-login in the Moodle site if available and the URL belongs to the site.
      *
-     * @param {string} url The URL to open.
-     * @param {string} [alertMessage] If defined, an alert will be shown before opening the browser.
-     * @return {Promise<any>} Promise resolved when done, rejected otherwise.
+     * @param url The URL to open.
+     * @param alertMessage If defined, an alert will be shown before opening the browser.
+     * @return Promise resolved when done, rejected otherwise.
      */
     openInBrowserWithAutoLoginIfSameSite(url: string, alertMessage?: string): Promise<any> {
         return this.openWithAutoLoginIfSameSite(false, url, undefined, alertMessage);
@@ -1190,10 +1641,10 @@ export class CoreSite {
     /**
      * Open a URL in inappbrowser using auto-login in the Moodle site if available.
      *
-     * @param {string} url The URL to open.
-     * @param {any} [options] Override default options passed to InAppBrowser.
-     * @param {string} [alertMessage] If defined, an alert will be shown before opening the inappbrowser.
-     * @return {Promise<InAppBrowserObject|void>} Promise resolved when done.
+     * @param url The URL to open.
+     * @param options Override default options passed to InAppBrowser.
+     * @param alertMessage If defined, an alert will be shown before opening the inappbrowser.
+     * @return Promise resolved when done.
      */
     openInAppWithAutoLogin(url: string, options?: any, alertMessage?: string): Promise<InAppBrowserObject | void> {
         return this.openWithAutoLogin(true, url, options, alertMessage);
@@ -1202,10 +1653,10 @@ export class CoreSite {
     /**
      * Open a URL in inappbrowser using auto-login in the Moodle site if available and the URL belongs to the site.
      *
-     * @param {string} url The URL to open.
-     * @param {object} [options] Override default options passed to inappbrowser.
-     * @param {string} [alertMessage] If defined, an alert will be shown before opening the inappbrowser.
-     * @return {Promise<InAppBrowserObject|void>} Promise resolved when done.
+     * @param url The URL to open.
+     * @param options Override default options passed to inappbrowser.
+     * @param alertMessage If defined, an alert will be shown before opening the inappbrowser.
+     * @return Promise resolved when done.
      */
     openInAppWithAutoLoginIfSameSite(url: string, options?: any, alertMessage?: string): Promise<InAppBrowserObject | void> {
         return this.openWithAutoLoginIfSameSite(true, url, options, alertMessage);
@@ -1214,11 +1665,11 @@ export class CoreSite {
     /**
      * Open a URL in browser or InAppBrowser using auto-login in the Moodle site if available.
      *
-     * @param {boolean} inApp True to open it in InAppBrowser, false to open in browser.
-     * @param {string} url The URL to open.
-     * @param {object} [options] Override default options passed to $cordovaInAppBrowser#open.
-     * @param {string} [alertMessage] If defined, an alert will be shown before opening the browser/inappbrowser.
-     * @return {Promise<InAppBrowserObject|void>} Promise resolved when done. Resolve param is returned only if inApp=true.
+     * @param inApp True to open it in InAppBrowser, false to open in browser.
+     * @param url The URL to open.
+     * @param options Override default options passed to $cordovaInAppBrowser#open.
+     * @param alertMessage If defined, an alert will be shown before opening the browser/inappbrowser.
+     * @return Promise resolved when done. Resolve param is returned only if inApp=true.
      */
     openWithAutoLogin(inApp: boolean, url: string, options?: any, alertMessage?: string): Promise<InAppBrowserObject | void> {
         // Get the URL to open.
@@ -1236,7 +1687,9 @@ export class CoreSite {
             return this.domUtils.showAlert(this.translate.instant('core.notice'), alertMessage, undefined, 3000).then((alert) => {
 
                 return new Promise<InAppBrowserObject | void>((resolve, reject): void => {
-                    alert.onDidDismiss(() => {
+                    const subscription = alert.didDismiss.subscribe(() => {
+                        subscription && subscription.unsubscribe();
+
                         if (inApp) {
                             resolve(this.utils.openInApp(url, options));
                         } else {
@@ -1251,11 +1704,11 @@ export class CoreSite {
     /**
      * Open a URL in browser or InAppBrowser using auto-login in the Moodle site if available and the URL belongs to the site.
      *
-     * @param {boolean} inApp True to open it in InAppBrowser, false to open in browser.
-     * @param {string} url The URL to open.
-     * @param {object} [options] Override default options passed to inappbrowser.
-     * @param {string} [alertMessage] If defined, an alert will be shown before opening the browser/inappbrowser.
-     * @return {Promise<InAppBrowserObject|void>} Promise resolved when done. Resolve param is returned only if inApp=true.
+     * @param inApp True to open it in InAppBrowser, false to open in browser.
+     * @param url The URL to open.
+     * @param options Override default options passed to inappbrowser.
+     * @param alertMessage If defined, an alert will be shown before opening the browser/inappbrowser.
+     * @return Promise resolved when done. Resolve param is returned only if inApp=true.
      */
     openWithAutoLoginIfSameSite(inApp: boolean, url: string, options?: any, alertMessage?: string)
             : Promise<InAppBrowserObject | void> {
@@ -1276,9 +1729,9 @@ export class CoreSite {
      * Get the config of this site.
      * It is recommended to use getStoredConfig instead since it's faster and doesn't use network.
      *
-     * @param {string} [name] Name of the setting to get. If not set or false, all settings will be returned.
-     * @param {boolean} [ignoreCache] True if it should ignore cached data.
-     * @return {Promise<any>} Promise resolved with site config.
+     * @param name Name of the setting to get. If not set or false, all settings will be returned.
+     * @param ignoreCache True if it should ignore cached data.
+     * @return Promise resolved with site config.
      */
     getConfig(name?: string, ignoreCache?: boolean): Promise<any> {
         const preSets: CoreSiteWSPreSets = {
@@ -1315,7 +1768,7 @@ export class CoreSite {
     /**
      * Invalidates config WS call.
      *
-     * @return {Promise<any>} Promise resolved when the data is invalidated.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateConfig(): Promise<any> {
         return this.invalidateWsCacheForKey(this.getConfigCacheKey());
@@ -1324,7 +1777,7 @@ export class CoreSite {
     /**
      * Get cache key for getConfig WS calls.
      *
-     * @return {string} Cache key.
+     * @return Cache key.
      */
     protected getConfigCacheKey(): string {
         return 'tool_mobile_get_config';
@@ -1333,8 +1786,8 @@ export class CoreSite {
     /**
      * Get the stored config of this site.
      *
-     * @param {string} [name] Name of the setting to get. If not set, all settings will be returned.
-     * @return {any} Site config or a specific setting.
+     * @param name Name of the setting to get. If not set, all settings will be returned.
+     * @return Site config or a specific setting.
      */
     getStoredConfig(name?: string): any {
         if (!this.config) {
@@ -1351,8 +1804,8 @@ export class CoreSite {
     /**
      * Check if a certain feature is disabled in the site.
      *
-     * @param {string} name Name of the feature to check.
-     * @return {boolean} Whether it's disabled.
+     * @param name Name of the feature to check.
+     * @return Whether it's disabled.
      */
     isFeatureDisabled(name: string): boolean {
         const disabledFeatures = this.getStoredConfig('tool_mobile_disabledfeatures');
@@ -1375,7 +1828,7 @@ export class CoreSite {
     /**
      * Get whether offline is disabled in the site.
      *
-     * @return {boolean} Whether it's disabled.
+     * @return Whether it's disabled.
      */
     isOfflineDisabled(): boolean {
         return this.offlineDisabled;
@@ -1385,8 +1838,8 @@ export class CoreSite {
      * Check if the site version is greater than one or several versions.
      * This function accepts a string or an array of strings. If array, the last version must be the highest.
      *
-     * @param {string | string[]} versions Version or list of versions to check.
-     * @return {boolean} Whether it's greater or equal, false otherwise.
+     * @param versions Version or list of versions to check.
+     * @return Whether it's greater or equal, false otherwise.
      * @description
      * If a string is supplied (e.g. '3.2.1'), it will check if the site version is greater or equal than this version.
      *
@@ -1433,9 +1886,9 @@ export class CoreSite {
     /**
      * Given a URL, convert it to a URL that will auto-login if supported.
      *
-     * @param {string} url The URL to convert.
-     * @param {boolean} [showModal=true] Whether to show a loading modal.
-     * @return {Promise<string>} Promise resolved with the converted URL.
+     * @param url The URL to convert.
+     * @param showModal Whether to show a loading modal.
+     * @return Promise resolved with the converted URL.
      */
     getAutoLoginUrl(url: string, showModal: boolean = true): Promise<string> {
 
@@ -1466,7 +1919,7 @@ export class CoreSite {
 
             this.lastAutoLogin = this.timeUtils.timestamp();
 
-            return data.autologinurl + '?userid=' + userId + '&key=' + data.key + '&urltogo=' + url;
+            return data.autologinurl + '?userid=' + userId + '&key=' + data.key + '&urltogo=' + encodeURIComponent(url);
         }).catch(() => {
 
             // Couldn't get autologin key, return the same URL.
@@ -1480,8 +1933,8 @@ export class CoreSite {
      * Get a version number from a release version.
      * If release version is valid but not found in the list of Moodle releases, it will use the last released major version.
      *
-     * @param {string} version Release version to convert to version number.
-     * @return {number} Version number, 0 if invalid.
+     * @param version Release version to convert to version number.
+     * @return Version number, 0 if invalid.
      */
     protected getVersionNumber(version: string): number {
         const data = this.getMajorAndMinor(version);
@@ -1502,8 +1955,8 @@ export class CoreSite {
     /**
      * Given a release version, return the major and minor versions.
      *
-     * @param {string} version Release version (e.g. '3.1.0').
-     * @return {object} Object with major and minor. Returns false if invalid version.
+     * @param version Release version (e.g. '3.1.0').
+     * @return Object with major and minor. Returns false if invalid version.
      */
     protected getMajorAndMinor(version: string): any {
         const match = version.match(/(\d)+(?:\.(\d)+)?(?:\.(\d)+)?/);
@@ -1521,8 +1974,8 @@ export class CoreSite {
     /**
      * Given a release version, return the next major version number.
      *
-     * @param {string} version Release version (e.g. '3.1.0').
-     * @return {number} Next major version number.
+     * @param version Release version (e.g. '3.1.0').
+     * @return Next major version number.
      */
     protected getNextMajorVersionNumber(version: string): number {
         const data = this.getMajorAndMinor(version),
@@ -1542,5 +1995,99 @@ export class CoreSite {
         }
 
         return this.MOODLE_RELEASES[releases[position + 1]];
+    }
+
+    /**
+     * Deletes a site setting.
+     *
+     * @param name The config name.
+     * @return Promise resolved when done.
+     */
+    deleteSiteConfig(name: string): Promise<any> {
+        return this.db.deleteRecords(CoreSite.CONFIG_TABLE, { name: name });
+    }
+
+    /**
+     * Get a site setting on local device.
+     *
+     * @param name The config name.
+     * @param defaultValue Default value to use if the entry is not found.
+     * @return Resolves upon success along with the config data. Reject on failure.
+     */
+    getLocalSiteConfig(name: string, defaultValue?: any): Promise<any> {
+        return this.db.getRecord(CoreSite.CONFIG_TABLE, { name: name }).then((entry) => {
+            return entry.value;
+        }).catch((error) => {
+            if (typeof defaultValue != 'undefined') {
+                return defaultValue;
+            }
+
+            return Promise.reject(error);
+        });
+    }
+
+    /**
+     * Set a site setting on local device.
+     *
+     * @param name The config name.
+     * @param value The config value. Can only store number or strings.
+     * @return Promise resolved when done.
+     */
+    setLocalSiteConfig(name: string, value: number | string): Promise<any> {
+        return this.db.insertRecord(CoreSite.CONFIG_TABLE, { name: name, value: value });
+    }
+
+    /**
+     * Get a certain cache expiration delay.
+     *
+     * @param updateFrequency The update frequency of the entry.
+     * @return Expiration delay.
+     */
+    getExpirationDelay(updateFrequency?: number): number {
+        let expirationDelay = this.UPDATE_FREQUENCIES[updateFrequency] || this.UPDATE_FREQUENCIES[CoreSite.FREQUENCY_USUALLY];
+
+        if (this.appProvider.isNetworkAccessLimited()) {
+            // Not WiFi, increase the expiration delay a 50% to decrease the data usage in this case.
+            expirationDelay *= 1.5;
+        }
+
+        return expirationDelay;
+    }
+
+    /*
+     * Check if tokenpluginfile script works in the site.
+     *
+     * @param url URL to check.
+     * @return Promise resolved with boolean: whether it works or not.
+     */
+    checkTokenPluginFile(url: string): Promise<boolean> {
+        if (!this.urlUtils.canUseTokenPluginFile(url, this.siteUrl, this.infos && this.infos.userprivateaccesskey)) {
+            // Cannot use tokenpluginfile.
+            return Promise.resolve(false);
+        } else if (typeof this.tokenPluginFileWorks != 'undefined') {
+            // Already checked.
+            return Promise.resolve(this.tokenPluginFileWorks);
+        } else if (this.tokenPluginFileWorksPromise) {
+            // Check ongoing, use the same promise.
+            return this.tokenPluginFileWorksPromise;
+        } else if (!this.appProvider.isOnline()) {
+            // Not online, cannot check it. Assume it's working, but don't save the result.
+            return Promise.resolve(true);
+        }
+
+        url = this.fixPluginfileURL(url);
+
+        this.tokenPluginFileWorksPromise = this.wsProvider.performHead(url).then((result) => {
+            return result.status >= 200 && result.status < 300;
+        }).catch((error) => {
+            // Error performing head request.
+            return false;
+        }).then((result) => {
+            this.tokenPluginFileWorks = result;
+
+            return result;
+        });
+
+        return this.tokenPluginFileWorksPromise;
     }
 }

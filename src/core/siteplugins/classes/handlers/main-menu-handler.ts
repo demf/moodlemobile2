@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,14 +25,13 @@ export class CoreSitePluginsMainMenuHandler extends CoreSitePluginsBaseHandler i
             protected initResult: any) {
         super(name);
 
-        // Set 699 as max priority so site plugins are always shown in the More tab (700 is Notifications tab).
-        this.priority = Math.min(handlerSchema.priority, 699);
+        this.priority = handlerSchema.priority || 0;
     }
 
     /**
      * Returns the data needed to render the handler.
      *
-     * @return {CoreMainMenuHandlerData} Data.
+     * @return Data.
      */
     getDisplayData(): CoreMainMenuHandlerData {
         return {
@@ -44,8 +43,10 @@ export class CoreSitePluginsMainMenuHandler extends CoreSitePluginsBaseHandler i
                 title: this.title,
                 component: this.plugin.component,
                 method: this.handlerSchema.method,
-                initResult: this.initResult
-            }
+                initResult: this.initResult,
+                ptrEnabled: this.handlerSchema.ptrenabled,
+            },
+            onlyInMore: true
         };
     }
 }

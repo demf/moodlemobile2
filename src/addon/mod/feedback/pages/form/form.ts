@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,9 +24,10 @@ import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreAppProvider } from '@providers/app';
 import { CoreEventsProvider } from '@providers/events';
 import { CoreCourseProvider } from '@core/course/providers/course';
+import { CoreCourseHelperProvider } from '@core/course/providers/helper';
 import { CoreLoginHelperProvider } from '@core/login/providers/helper';
 import { CoreContentLinksHelperProvider } from '@core/contentlinks/providers/helper';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSitesReadingStrategy } from '@providers/sites';
 
 /**
  * Page that displays feedback form.
@@ -69,7 +70,7 @@ export class AddonModFeedbackFormPage implements OnDestroy {
             protected eventsProvider: CoreEventsProvider, protected feedbackSync: AddonModFeedbackSyncProvider, network: Network,
             protected translate: TranslateService, protected loginHelper: CoreLoginHelperProvider,
             protected linkHelper: CoreContentLinksHelperProvider, sitesProvider: CoreSitesProvider,
-            @Optional() private content: Content, zone: NgZone) {
+            @Optional() private content: Content, zone: NgZone, protected courseHelper: CoreCourseHelperProvider) {
 
         this.module = navParams.get('module');
         this.courseId = navParams.get('courseId');
@@ -81,10 +82,10 @@ export class AddonModFeedbackFormPage implements OnDestroy {
         this.currentSite = sitesProvider.getCurrentSite();
 
         // Refresh online status when changes.
-        this.onlineObserver = network.onchange().subscribe((online) => {
+        this.onlineObserver = network.onchange().subscribe(() => {
             // Execute the callback in the Angular zone, so change detection doesn't stop working.
             zone.run(() => {
-                this.offline = !online;
+                this.offline = !this.appProvider.isOnline();
             });
         });
     }
@@ -94,8 +95,10 @@ export class AddonModFeedbackFormPage implements OnDestroy {
      */
     ionViewDidLoad(): void {
         this.fetchData().then(() => {
-            this.feedbackProvider.logView(this.feedback.id, true).then(() => {
-                this.courseProvider.checkModuleCompletion(this.courseId, this.module.completionstatus);
+            this.feedbackProvider.logView(this.feedback.id, this.feedback.name, true).then(() => {
+                this.courseProvider.checkModuleCompletion(this.courseId, this.module.completiondata);
+            }).catch(() => {
+                // Ignore errors.
             });
         });
     }
@@ -110,7 +113,7 @@ export class AddonModFeedbackFormPage implements OnDestroy {
     /**
      * Check if we can leave the page or not.
      *
-     * @return {boolean | Promise<void>} Resolved if we can leave it, rejected if not.
+     * @return Resolved if we can leave it, rejected if not.
      */
     ionViewCanLeave(): boolean | Promise<void> {
         if (this.forceLeave) {
@@ -134,10 +137,14 @@ export class AddonModFeedbackFormPage implements OnDestroy {
     /**
      * Fetch all the data required for the view.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected fetchData(): Promise<any> {
         this.offline = !this.appProvider.isOnline();
+        const options = {
+            cmId: this.module.id,
+            readingStrategy: this.offline ? CoreSitesReadingStrategy.PreferCache : CoreSitesReadingStrategy.OnlyNetwork,
+        };
 
         return this.feedbackProvider.getFeedback(this.courseId, this.module.id).then((feedbackData) => {
             this.feedback = feedbackData;
@@ -148,8 +155,7 @@ export class AddonModFeedbackFormPage implements OnDestroy {
         }).then((accessData) => {
             if (!this.preview && accessData.cansubmit && !accessData.isempty) {
                 return typeof this.currentPage == 'undefined' ?
-                    this.feedbackProvider.getResumePage(this.feedback.id, this.offline, true) :
-                    Promise.resolve(this.currentPage);
+                    this.feedbackProvider.getResumePage(this.feedback.id, options) : Promise.resolve(this.currentPage);
             } else {
                 this.preview = true;
 
@@ -159,8 +165,9 @@ export class AddonModFeedbackFormPage implements OnDestroy {
             if (!this.offline && !this.utils.isWebServiceError(error)) {
                 // If it fails, go offline.
                 this.offline = true;
+                options.readingStrategy = CoreSitesReadingStrategy.PreferCache;
 
-                return this.feedbackProvider.getResumePage(this.feedback.id, true);
+                return this.feedbackProvider.getResumePage(this.feedback.id, options);
             }
 
             return Promise.reject(error);
@@ -180,15 +187,21 @@ export class AddonModFeedbackFormPage implements OnDestroy {
     /**
      * Fetch access information.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected fetchAccessData(): Promise<any> {
-        return this.feedbackProvider.getFeedbackAccessInformation(this.feedback.id, this.offline, true).catch((error) => {
+        const options = {
+            cmId: this.module.id,
+            readingStrategy: this.offline ? CoreSitesReadingStrategy.PreferCache : CoreSitesReadingStrategy.OnlyNetwork,
+        };
+
+        return this.feedbackProvider.getFeedbackAccessInformation(this.feedback.id, options).catch((error) => {
             if (!this.offline && !this.utils.isWebServiceError(error)) {
                 // If it fails, go offline.
                 this.offline = true;
+                options.readingStrategy = CoreSitesReadingStrategy.PreferCache;
 
-                return this.feedbackProvider.getFeedbackAccessInformation(this.feedback.id, true);
+                return this.feedbackProvider.getFeedbackAccessInformation(this.feedback.id, options);
             }
 
             return Promise.reject(error);
@@ -200,20 +213,25 @@ export class AddonModFeedbackFormPage implements OnDestroy {
     }
 
     protected fetchFeedbackPageData(page: number = 0): Promise<void> {
+        const options = {
+            cmId: this.module.id,
+            readingStrategy: this.offline ? CoreSitesReadingStrategy.PreferCache : CoreSitesReadingStrategy.OnlyNetwork,
+        };
         let promise;
         this.items = [];
 
         if (this.preview) {
-            promise = this.feedbackProvider.getItems(this.feedback.id);
+            promise = this.feedbackProvider.getItems(this.feedback.id, {cmId: this.module.id});
         } else {
             this.currentPage = page;
 
-            promise = this.feedbackProvider.getPageItemsWithValues(this.feedback.id, page, this.offline, true).catch((error) => {
+            promise = this.feedbackProvider.getPageItemsWithValues(this.feedback.id, page, options).catch((error) => {
                 if (!this.offline && !this.utils.isWebServiceError(error)) {
                     // If it fails, go offline.
                     this.offline = true;
+                    options.readingStrategy = CoreSitesReadingStrategy.PreferCache;
 
-                    return this.feedbackProvider.getPageItemsWithValues(this.feedback.id, page, true);
+                    return this.feedbackProvider.getPageItemsWithValues(this.feedback.id, page, options);
                 }
 
                 return Promise.reject(error);
@@ -243,8 +261,8 @@ export class AddonModFeedbackFormPage implements OnDestroy {
     /**
      * Function to allow page navigation through the questions form.
      *
-     * @param  {boolean}       goPrevious If true it will go back to the previous page, if false, it will go forward.
-     * @return {Promise<void>}            Resolved when done.
+     * @param goPrevious If true it will go back to the previous page, if false, it will go forward.
+     * @return Resolved when done.
      */
     gotoPage(goPrevious: boolean): Promise<void> {
         this.domUtils.scrollToTop(this.content);
@@ -259,8 +277,12 @@ export class AddonModFeedbackFormPage implements OnDestroy {
         return this.feedbackSync.syncFeedback(this.feedback.id).catch(() => {
             // Ignore errors.
         }).then(() => {
-            return this.feedbackProvider.processPage(this.feedback.id, this.currentPage, responses, goPrevious, formHasErrors,
-                    this.courseId).then((response) => {
+            return this.feedbackProvider.processPage(this.feedback.id, this.currentPage, responses, {
+                goPrevious,
+                formHasErrors,
+                courseId: this.courseId,
+                cmId: this.module.id,
+            }).then((response) => {
                 const jumpTo = parseInt(response.jumpto, 10);
 
                 if (response.completed) {
@@ -276,6 +298,8 @@ export class AddonModFeedbackFormPage implements OnDestroy {
                     const promises = [];
                     promises.push(this.feedbackProvider.invalidateFeedbackAccessInformationData(this.feedback.id));
                     promises.push(this.feedbackProvider.invalidateResumePageData(this.feedback.id));
+
+                    this.eventsProvider.trigger(CoreEventsProvider.ACTIVITY_DATA_SENT, { module: 'feedback' });
 
                     return Promise.all(promises).then(() => {
                         return this.fetchAccessData();
@@ -323,10 +347,7 @@ export class AddonModFeedbackFormPage implements OnDestroy {
                 modal.dismiss();
             });
         } else {
-            // Use redirect to make the course the new history root (to avoid "loops" in history).
-            this.loginHelper.redirect('CoreCourseSectionPage', {
-                course: { id: this.courseId }
-            }, this.currentSite.getId());
+            this.courseHelper.getAndOpenCourse(undefined, this.courseId, {}, this.currentSite.getId());
         }
     }
 
@@ -336,8 +357,13 @@ export class AddonModFeedbackFormPage implements OnDestroy {
     ngOnDestroy(): void {
         if (this.submitted) {
             const tab = this.submitted == 'analysis' ? 'analysis' : 'overview';
+
             // If form has been submitted, the info has been already invalidated but we should update index view.
-            this.eventsProvider.trigger(AddonModFeedbackProvider.FORM_SUBMITTED, {feedbackId: this.feedback.id, tab: tab});
+            this.eventsProvider.trigger(AddonModFeedbackProvider.FORM_SUBMITTED, {
+                feedbackId: this.feedback.id,
+                tab: tab,
+                offline: this.completedOffline
+            });
         }
         this.onlineObserver && this.onlineObserver.unsubscribe();
     }

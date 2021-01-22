@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 import { Injectable } from '@angular/core';
 import { CoreFileProvider } from '@providers/file';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSiteSchema } from '@providers/sites';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
 
@@ -27,66 +27,70 @@ export class AddonModGlossaryOfflineProvider {
     // Variables for database.
     static ENTRIES_TABLE = 'addon_mod_glossary_entrues';
 
-    protected tablesSchema = [
-        {
-            name: AddonModGlossaryOfflineProvider.ENTRIES_TABLE,
-            columns: [
-                {
-                    name: 'glossaryid',
-                    type: 'INTEGER',
-                },
-                {
-                    name: 'courseid',
-                    type: 'INTEGER',
-                },
-                {
-                    name: 'concept',
-                    type: 'TEXT',
-                },
-                {
-                    name: 'definition',
-                    type: 'TEXT',
-                },
-                {
-                    name: 'definitionformat',
-                    type: 'TEXT',
-                },
-                {
-                    name: 'userid',
-                    type: 'INTEGER',
-                },
-                {
-                    name: 'timecreated',
-                    type: 'INTEGER',
-                },
-                {
-                    name: 'options',
-                    type: 'TEXT',
-                },
-                {
-                    name: 'attachments',
-                    type: 'TEXT',
-                },
-            ],
-            primaryKeys: ['glossaryid', 'concept', 'timecreated']
-        }
-    ];
+    protected siteSchema: CoreSiteSchema = {
+        name: 'AddonModGlossaryOfflineProvider',
+        version: 1,
+        tables: [
+            {
+                name: AddonModGlossaryOfflineProvider.ENTRIES_TABLE,
+                columns: [
+                    {
+                        name: 'glossaryid',
+                        type: 'INTEGER',
+                    },
+                    {
+                        name: 'courseid',
+                        type: 'INTEGER',
+                    },
+                    {
+                        name: 'concept',
+                        type: 'TEXT',
+                    },
+                    {
+                        name: 'definition',
+                        type: 'TEXT',
+                    },
+                    {
+                        name: 'definitionformat',
+                        type: 'TEXT',
+                    },
+                    {
+                        name: 'userid',
+                        type: 'INTEGER',
+                    },
+                    {
+                        name: 'timecreated',
+                        type: 'INTEGER',
+                    },
+                    {
+                        name: 'options',
+                        type: 'TEXT',
+                    },
+                    {
+                        name: 'attachments',
+                        type: 'TEXT',
+                    },
+                ],
+                primaryKeys: ['glossaryid', 'concept', 'timecreated']
+            }
+        ]
+    };
 
     constructor(private fileProvider: CoreFileProvider,
             private sitesProvider: CoreSitesProvider,
             private textUtils: CoreTextUtilsProvider,
             private utils: CoreUtilsProvider) {
-        this.sitesProvider.createTablesFromSchema(this.tablesSchema);
+        this.sitesProvider.registerSiteSchema(this.siteSchema);
     }
 
     /**
      * Delete a new entry.
      *
-     * @param  {number} glossaryId  Glossary ID.
-     * @param  {string} concept     Glossary entry concept.
-     * @param  {number} timeCreated The time the entry was created.
-     * @param  {string} [siteId]    Site ID. If not defined, current site.
-     * @return {Promise<void>}      Promise resolved if deleted, rejected if failure.
+     * @param glossaryId Glossary ID.
+     * @param concept Glossary entry concept.
+     * @param timeCreated The time the entry was created.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved if deleted, rejected if failure.
      */
     deleteNewEntry(glossaryId: number, concept: string, timeCreated: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -103,8 +107,8 @@ export class AddonModGlossaryOfflineProvider {
     /**
      * Get all the stored new entries from all the glossaries.
      *
-     * @param  {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any[]>} Promise resolved with entries.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with entries.
      */
     getAllNewEntries(siteId?: string): Promise<any[]> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -117,11 +121,11 @@ export class AddonModGlossaryOfflineProvider {
     /**
      * Get a stored new entry.
      *
-     * @param  {number} glossaryId  Glossary ID.
-     * @param  {string} concept     Glossary entry concept.
-     * @param  {number} timeCreated The time the entry was created.
-     * @param  {string} [siteId]    Site ID. If not defined, current site.
-     * @return {Promise<any>} Promise resolved with entry.
+     * @param glossaryId Glossary ID.
+     * @param concept Glossary entry concept.
+     * @param timeCreated The time the entry was created.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with entry.
      */
     getNewEntry(glossaryId: number, concept: string, timeCreated: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -139,10 +143,10 @@ export class AddonModGlossaryOfflineProvider {
     /**
      * Get all the stored add entry data from a certain glossary.
      *
-     * @param  {number} glossaryId Glossary ID.
-     * @param  {string} [siteId]   Site ID. If not defined, current site.
-     * @param  {number} [userId]   User the entries belong to. If not defined, current user in site.
-     * @return {Promise<any[]>} Promise resolved with entries.
+     * @param glossaryId Glossary ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @param userId User the entries belong to. If not defined, current user in site.
+     * @return Promise resolved with entries.
      */
     getGlossaryNewEntries(glossaryId: number, siteId?: string, userId?: number): Promise<any[]> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -160,11 +164,11 @@ export class AddonModGlossaryOfflineProvider {
     /**
      * Check if a concept is used offline.
      *
-     * @param  {number} glossaryId    Glossary ID.
-     * @param  {string} concept       Concept to check.
-     * @param  {number} [timeCreated] Time of the entry we are editing.
-     * @param  {string} [siteId]      Site ID. If not defined, current site.
-     * @return {Promise<boolean>}     Promise resolved with true if concept is found, false otherwise.
+     * @param glossaryId Glossary ID.
+     * @param concept Concept to check.
+     * @param timeCreated Time of the entry we are editing.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with true if concept is found, false otherwise.
      */
     isConceptUsed(glossaryId: number, concept: string, timeCreated?: number, siteId?: string): Promise<boolean> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -194,17 +198,17 @@ export class AddonModGlossaryOfflineProvider {
     /**
      * Save a new entry to be sent later.
      *
-     * @param  {number} glossaryId     Glossary ID.
-     * @param  {string} concept        Glossary entry concept.
-     * @param  {string} definition     Glossary entry concept definition.
-     * @param  {number} courseId       Course ID of the glossary.
-     * @param  {any}    [options]      Options for the entry.
-     * @param  {any}    [attachments]  Result of CoreFileUploaderProvider#storeFilesToUpload for attachments.
-     * @param  {number} [timeCreated]  The time the entry was created. If not defined, current time.
-     * @param  {string} [siteId]       Site ID. If not defined, current site.
-     * @param  {number} [userId]       User the entry belong to. If not defined, current user in site.
-     * @param  {any}    [discardEntry] The entry provided will be discarded if found.
-     * @return {Promise<false>}        Promise resolved if stored, rejected if failure.
+     * @param glossaryId Glossary ID.
+     * @param concept Glossary entry concept.
+     * @param definition Glossary entry concept definition.
+     * @param courseId Course ID of the glossary.
+     * @param options Options for the entry.
+     * @param attachments Result of CoreFileUploaderProvider#storeFilesToUpload for attachments.
+     * @param timeCreated The time the entry was created. If not defined, current time.
+     * @param siteId Site ID. If not defined, current site.
+     * @param userId User the entry belong to. If not defined, current user in site.
+     * @param discardEntry The entry provided will be discarded if found.
+     * @return Promise resolved if stored, rejected if failure.
      */
     addNewEntry(glossaryId: number, concept: string, definition: string, courseId: number, options?: any, attachments?: any,
             timeCreated?: number, siteId?: string, userId?: number, discardEntry?: any): Promise<false> {
@@ -238,9 +242,9 @@ export class AddonModGlossaryOfflineProvider {
     /**
      * Get the path to the folder where to store files for offline attachments in a glossary.
      *
-     * @param  {number} glossaryId Glossary ID.
-     * @param  {string} [siteId]   Site ID. If not defined, current site.
-     * @return {Promise<string>}   Promise resolved with the path.
+     * @param glossaryId Glossary ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with the path.
      */
     getGlossaryFolder(glossaryId: number, siteId?: string): Promise<string> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -254,11 +258,11 @@ export class AddonModGlossaryOfflineProvider {
     /**
      * Get the path to the folder where to store files for a new offline entry.
      *
-     * @param  {number} glossaryId  Glossary ID.
-     * @param  {string} concept     The name of the entry.
-     * @param  {number} timeCreated Time to allow duplicated entries.
-     * @param  {string} [siteId]    Site ID. If not defined, current site.
-     * @return {Promise<string>}    Promise resolved with the path.
+     * @param glossaryId Glossary ID.
+     * @param concept The name of the entry.
+     * @param timeCreated Time to allow duplicated entries.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with the path.
      */
     getEntryFolder(glossaryId: number, concept: string, timeCreated: number, siteId?: string): Promise<string> {
         return this.getGlossaryFolder(glossaryId, siteId).then((folderPath) => {
@@ -269,8 +273,8 @@ export class AddonModGlossaryOfflineProvider {
     /**
      * Parse "options" and "attachments" columns of a fetched record.
      *
-     * @param  {any} records Record object
-     * @return {any}         Record object with columns parsed.
+     * @param records Record object
+     * @return Record object with columns parsed.
      */
     protected parseRecord(record: any): any {
         record.options = this.textUtils.parseJSON(record.options);

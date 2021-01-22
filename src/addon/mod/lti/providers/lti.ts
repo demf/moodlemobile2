@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,15 +16,15 @@ import { Injectable } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { CoreAppProvider } from '@providers/app';
 import { CoreFileProvider } from '@providers/file';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSitesCommonWSOptions } from '@providers/sites';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreUrlUtilsProvider } from '@providers/utils/url';
+import { CoreCourseLogHelperProvider } from '@core/course/providers/log-helper';
+import { CoreSite } from '@classes/site';
+import { CoreWSExternalWarning, CoreWSExternalFile } from '@providers/ws';
 
-export interface AddonModLtiParam {
-    name: string;
-    value: string;
-}
+import { makeSingleton } from '@singletons/core.singletons';
 
 /**
  * Service that provides some features for LTI.
@@ -42,12 +42,13 @@ export class AddonModLtiProvider {
             private urlUtils: CoreUrlUtilsProvider,
             private utils: CoreUtilsProvider,
             private translate: TranslateService,
-            private appProvider: CoreAppProvider) {}
+            private appProvider: CoreAppProvider,
+            private logHelper: CoreCourseLogHelperProvider) {}
 
     /**
      * Delete launcher.
      *
-     * @return {Promise<any>} Promise resolved when the launcher file is deleted.
+     * @return Promise resolved when the launcher file is deleted.
      */
     deleteLauncher(): Promise<any> {
         return this.fileProvider.removeFile(this.LAUNCHER_FILE_NAME);
@@ -56,13 +57,13 @@ export class AddonModLtiProvider {
     /**
      * Generates a launcher file.
      *
-     * @param {string} url Launch URL.
-     * @param {AddonModLtiParam[]} params Launch params.
-     * @return {Promise<string>} Promise resolved with the file URL.
+     * @param url Launch URL.
+     * @param params Launch params.
+     * @return Promise resolved with the file URL.
      */
-    generateLauncher(url: string, params: AddonModLtiParam[]): Promise<string> {
+    async generateLauncher(url: string, params: AddonModLtiParam[]): Promise<string> {
         if (!this.fileProvider.isAvailable()) {
-            return Promise.resolve(url);
+            return url;
         }
 
         // Generate a form with the params.
@@ -85,47 +86,53 @@ export class AddonModLtiProvider {
             '    }; \n' +
             '</script> \n';
 
-        return this.fileProvider.writeFile(this.LAUNCHER_FILE_NAME, text).then((entry) => {
-            if (this.appProvider.isDesktop()) {
-                return entry.toInternalURL();
-            } else {
-                return entry.toURL();
-            }
-        });
+        const entry = await this.fileProvider.writeFile(this.LAUNCHER_FILE_NAME, text);
+
+        if (this.appProvider.isDesktop()) {
+            return entry.toInternalURL();
+        } else {
+            return entry.toURL();
+        }
     }
 
     /**
      * Get a LTI.
      *
-     * @param {number} courseId Course ID.
-     * @param {number} cmId Course module ID.
-     * @return {Promise<any>} Promise resolved when the LTI is retrieved.
+     * @param courseId Course ID.
+     * @param cmId Course module ID.
+     * @param options Other options.
+     * @return Promise resolved when the LTI is retrieved.
      */
-    getLti(courseId: number, cmId: number): Promise<any> {
+    async getLti(courseId: number, cmId: number, options: CoreSitesCommonWSOptions = {}): Promise<AddonModLtiLti> {
         const params: any = {
             courseids: [courseId]
         };
-        const preSets: any = {
-            cacheKey: this.getLtiCacheKey(courseId)
+        const preSets = {
+            cacheKey: this.getLtiCacheKey(courseId),
+            updateFrequency: CoreSite.FREQUENCY_RARELY,
+            component: AddonModLtiProvider.COMPONENT,
+            ...this.sitesProvider.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
         };
 
-        return this.sitesProvider.getCurrentSite().read('mod_lti_get_ltis_by_courses', params, preSets).then((response) => {
-            if (response.ltis) {
-                const currentLti = response.ltis.find((lti) => lti.coursemodule == cmId);
-                if (currentLti) {
-                    return currentLti;
-                }
-            }
+        const site = await this.sitesProvider.getSite(options.siteId);
 
-            return Promise.reject(null);
-        });
+        const response: AddonModLtiGetLtisByCoursesResult = await site.read('mod_lti_get_ltis_by_courses', params, preSets);
+
+        if (response.ltis) {
+            const currentLti = response.ltis.find((lti) => lti.coursemodule == cmId);
+            if (currentLti) {
+                return currentLti;
+            }
+        }
+
+        throw new Error('Activity not found.');
     }
 
     /**
      * Get cache key for LTI data WS calls.
      *
-     * @param {number} courseId Course ID.
-     * @return {string} Cache key.
+     * @param courseId Course ID.
+     * @return Cache key.
      */
     protected getLtiCacheKey(courseId: number): string {
         return this.ROOT_CACHE_KEY + 'lti:' + courseId;
@@ -134,11 +141,11 @@ export class AddonModLtiProvider {
     /**
      * Get a LTI launch data.
      *
-     * @param {number} id LTI id.
-     * @return {Promise<any>} Promise resolved when the launch data is retrieved.
+     * @param id LTI id.
+     * @return Promise resolved when the launch data is retrieved.
      */
-    getLtiLaunchData(id: number): Promise<any> {
-        const params: any = {
+    getLtiLaunchData(id: number): Promise<AddonModLtiGetToolLaunchDataResult> {
+        const params = {
             toolid: id
         };
 
@@ -150,7 +157,9 @@ export class AddonModLtiProvider {
             cacheKey: this.getLtiLaunchDataCacheKey(id)
         };
 
-        return this.sitesProvider.getCurrentSite().read('mod_lti_get_tool_launch_data', params, preSets).then((response) => {
+        return this.sitesProvider.getCurrentSite().read('mod_lti_get_tool_launch_data', params, preSets)
+                .then((response: AddonModLtiGetToolLaunchDataResult): any => {
+
             if (response.endpoint) {
                 return response;
             }
@@ -162,8 +171,8 @@ export class AddonModLtiProvider {
     /**
      * Get cache key for LTI launch data WS calls.
      *
-     * @param {number} id LTI id.
-     * @return {string} Cache key.
+     * @param id LTI id.
+     * @return Cache key.
      */
     protected getLtiLaunchDataCacheKey(id: number): string {
         return this.ROOT_CACHE_KEY + 'launch:' + id;
@@ -172,8 +181,8 @@ export class AddonModLtiProvider {
     /**
      * Invalidates LTI data.
      *
-     * @param {number} courseId Course ID.
-     * @return {Promise<any>} Promise resolved when the data is invalidated.
+     * @param courseId Course ID.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateLti(courseId: number): Promise<any> {
         return this.sitesProvider.getCurrentSite().invalidateWsCacheForKey(this.getLtiCacheKey(courseId));
@@ -182,42 +191,138 @@ export class AddonModLtiProvider {
     /**
      * Invalidates options.
      *
-     * @param {number} id LTI id.
-     * @return {Promise<any>} Promise resolved when the data is invalidated.
+     * @param id LTI id.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateLtiLaunchData(id: number): Promise<any> {
         return this.sitesProvider.getCurrentSite().invalidateWsCacheForKey(this.getLtiLaunchDataCacheKey(id));
     }
 
     /**
+     * Check if open in InAppBrowser is disabled.
+     *
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with boolean: whether it's disabled.
+     */
+    async isOpenInAppBrowserDisabled(siteId?: string): Promise<boolean> {
+        const site = await this.sitesProvider.getSite(siteId);
+
+        return this.isOpenInAppBrowserDisabledInSite(site);
+    }
+
+    /**
+     * Check if open in InAppBrowser is disabled.
+     *
+     * @param site Site. If not defined, current site.
+     * @return Whether it's disabled.
+     */
+    isOpenInAppBrowserDisabledInSite(site?: CoreSite): boolean {
+        site = site || this.sitesProvider.getCurrentSite();
+
+        return site.isFeatureDisabled('CoreCourseModuleDelegate_AddonModLti:openInAppBrowser');
+    }
+
+    /**
      * Launch LTI.
      *
-     * @param {string} url Launch URL.
-     * @param {AddonModLtiParam[]} params Launch params.
-     * @return {Promise<any>} Promise resolved when the WS call is successful.
+     * @param url Launch URL.
+     * @param params Launch params.
+     * @return Promise resolved when the WS call is successful.
      */
-    launch(url: string, params: AddonModLtiParam[]): Promise<any> {
+    async launch(url: string, params: AddonModLtiParam[]): Promise<void> {
         if (!this.urlUtils.isHttpURL(url)) {
-            return Promise.reject(this.translate.instant('addon.mod_lti.errorinvalidlaunchurl'));
+            throw this.translate.instant('addon.mod_lti.errorinvalidlaunchurl');
         }
 
         // Generate launcher and open it.
-        return this.generateLauncher(url, params).then((url) => {
-            this.utils.openInApp(url);
-        });
+        const launcherUrl = await this.generateLauncher(url, params);
+
+        if (this.appProvider.isMobile()) {
+            this.utils.openInApp(launcherUrl);
+        } else {
+            // In desktop open in browser, we found some cases where inapp caused JS issues.
+            this.utils.openInBrowser(launcherUrl);
+        }
     }
 
     /**
      * Report the LTI as being viewed.
      *
-     * @param {string} id LTI id.
-     * @return {Promise<any>} Promise resolved when the WS call is successful.
+     * @param id LTI id.
+     * @param name Name of the lti.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the WS call is successful.
      */
-    logView(id: string): Promise<any> {
+    logView(id: number, name?: string, siteId?: string): Promise<any> {
         const params: any = {
             ltiid: id
         };
 
-        return this.sitesProvider.getCurrentSite().write('mod_lti_view_lti', params);
+        return this.logHelper.logSingle('mod_lti_view_lti', params, AddonModLtiProvider.COMPONENT, id, name, 'lti', {}, siteId);
     }
 }
+
+export class AddonModLti extends makeSingleton(AddonModLtiProvider) {}
+
+/**
+ * LTI returned by mod_lti_get_ltis_by_courses.
+ */
+export type AddonModLtiLti = {
+    id: number; // External tool id.
+    coursemodule: number; // Course module id.
+    course: number; // Course id.
+    name: string; // LTI name.
+    intro?: string; // The LTI intro.
+    introformat?: number; // Intro format (1 = HTML, 0 = MOODLE, 2 = PLAIN or 4 = MARKDOWN).
+    introfiles?: CoreWSExternalFile[]; // @since 3.2.
+    timecreated?: number; // Time of creation.
+    timemodified?: number; // Time of last modification.
+    typeid?: number; // Type id.
+    toolurl?: string; // Tool url.
+    securetoolurl?: string; // Secure tool url.
+    instructorchoicesendname?: string; // Instructor choice send name.
+    instructorchoicesendemailaddr?: number; // Instructor choice send mail address.
+    instructorchoiceallowroster?: number; // Instructor choice allow roster.
+    instructorchoiceallowsetting?: number; // Instructor choice allow setting.
+    instructorcustomparameters?: string; // Instructor custom parameters.
+    instructorchoiceacceptgrades?: number; // Instructor choice accept grades.
+    grade?: number; // Enable grades.
+    launchcontainer?: number; // Launch container mode.
+    resourcekey?: string; // Resource key.
+    password?: string; // Shared secret.
+    debuglaunch?: number; // Debug launch.
+    showtitlelaunch?: number; // Show title launch.
+    showdescriptionlaunch?: number; // Show description launch.
+    servicesalt?: string; // Service salt.
+    icon?: string; // Alternative icon URL.
+    secureicon?: string; // Secure icon URL.
+    section?: number; // Course section id.
+    visible?: number; // Visible.
+    groupmode?: number; // Group mode.
+    groupingid?: number; // Group id.
+};
+
+/**
+ * Param to send to the LTI.
+ */
+export type AddonModLtiParam = {
+    name: string; // Parameter name.
+    value: string; // Parameter value.
+};
+
+/**
+ * Result of WS mod_lti_get_ltis_by_courses.
+ */
+export type AddonModLtiGetLtisByCoursesResult = {
+    ltis: AddonModLtiLti[];
+    warnings?: CoreWSExternalWarning[];
+};
+
+/**
+ * Result of WS mod_lti_get_tool_launch_data.
+ */
+export type AddonModLtiGetToolLaunchDataResult = {
+    endpoint: string; // Endpoint URL.
+    parameters: AddonModLtiParam[];
+    warnings?: CoreWSExternalWarning[];
+};

@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +14,16 @@
 
 import { Injectable } from '@angular/core';
 import { NavController, ViewController } from 'ionic-angular';
-import { AddonModFeedbackProvider } from './feedback';
+import { AddonModFeedbackProvider, AddonModFeedbackGroupPaginatedOptions } from './feedback';
 import { CoreUserProvider } from '@core/user/providers/user';
+import { CoreCourseProvider } from '@core/course/providers/course';
+import { CoreContentLinksHelperProvider } from '@core/contentlinks/providers/helper';
+import { CoreSitesProvider, CoreSitesReadingStrategy } from '@providers/sites';
+import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
+import { CoreTimeUtilsProvider } from '@providers/utils/time';
+import { CoreUtilsProvider } from '@providers/utils/utils';
 import { TranslateService } from '@ngx-translate/core';
-import * as moment from 'moment';
 
 /**
  * Service that provides helper functions for feedbacks.
@@ -31,18 +36,21 @@ export class AddonModFeedbackHelperProvider {
     protected MODE_CATEGORY = 3;
 
     constructor(protected feedbackProvider: AddonModFeedbackProvider, protected userProvider: CoreUserProvider,
-            protected textUtils: CoreTextUtilsProvider, protected translate: TranslateService) {
+            protected textUtils: CoreTextUtilsProvider, protected translate: TranslateService,
+            protected timeUtils: CoreTimeUtilsProvider, protected domUtils: CoreDomUtilsProvider,
+            protected courseProvider: CoreCourseProvider, protected linkHelper: CoreContentLinksHelperProvider,
+            protected sitesProvider: CoreSitesProvider, protected utils: CoreUtilsProvider) {
     }
 
     /**
      * Check if the page we are going to open is in the history and returns the view controller in the stack to go back.
      *
-     * @param {string} pageName       Name of the page we want to navigate.
-     * @param {number} instance       Activity instance Id. I.e FeedbackId.
-     * @param {string} paramName      Param name where to find the instance number.
-     * @param {string} prefix         Prefix to check if we are out of the activity context.
-     * @param {NavController} navCtrl Nav Controller of the view.
-     * @return {ViewController}   Returns view controller found or null.
+     * @param pageName Name of the page we want to navigate.
+     * @param instance Activity instance Id. I.e FeedbackId.
+     * @param paramName Param name where to find the instance number.
+     * @param prefix Prefix to check if we are out of the activity context.
+     * @param navCtrl Nav Controller of the view.
+     * @return Returns view controller found or null.
      */
     protected getPageView(pageName: string, instance: number, paramName: string, prefix: string,
             navCtrl: NavController): ViewController {
@@ -77,13 +85,12 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Retrieves a list of students who didn't submit the feedback with extra info.
      *
-     * @param   {number}    feedbackId      Feedback ID.
-     * @param   {number}    groupId         Group id, 0 means that the function will determine the user group.
-     * @param   {number}    page            The page of records to return.
-     * @return  {Promise<any>}              Promise resolved when the info is retrieved.
+     * @param feedbackId Feedback ID.
+     * @param options Other options.
+     * @return Promise resolved when the info is retrieved.
      */
-    getNonRespondents(feedbackId: number, groupId: number, page: number): Promise<any> {
-        return this.feedbackProvider.getNonRespondents(feedbackId, groupId, page).then((responses) => {
+    getNonRespondents(feedbackId: number, options: AddonModFeedbackGroupPaginatedOptions = {}): Promise<any> {
+        return this.feedbackProvider.getNonRespondents(feedbackId, options).then((responses) => {
             return this.addImageProfileToAttempts(responses.users).then((users) => {
                 responses.users = users;
 
@@ -95,8 +102,8 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Get page items responses to be sent.
      *
-     * @param   {any[]} items    Items where the values are.
-     * @return  {any}            Responses object to be sent.
+     * @param items Items where the values are.
+     * @return Responses object to be sent.
      */
     getPageItemsResponses(items: any[]): any {
         const responses = {};
@@ -137,7 +144,7 @@ export class AddonModFeedbackHelperProvider {
                         responses[name] = value;
                     });
                 } else {
-                    if (itemData.typ == 'multichoice') {
+                    if (itemData.typ == 'multichoice' && itemData.subtype != 'r') {
                         name = nameTemp + '[0]';
                     } else {
                         name = nameTemp;
@@ -177,13 +184,12 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Returns the feedback user responses with extra info.
      *
-     * @param   {number}    feedbackId      Feedback ID.
-     * @param   {number}    groupId         Group id, 0 means that the function will determine the user group.
-     * @param   {number}    page            The page of records to return.
-     * @return  {Promise<any>}              Promise resolved when the info is retrieved.
+     * @param feedbackId Feedback ID.
+     * @param options Other options.
+     * @return Promise resolved when the info is retrieved.
      */
-    getResponsesAnalysis(feedbackId: number, groupId: number, page: number): Promise<any> {
-        return this.feedbackProvider.getResponsesAnalysis(feedbackId, groupId, page).then((responses) => {
+    getResponsesAnalysis(feedbackId: number, options: AddonModFeedbackGroupPaginatedOptions = {}): Promise<any> {
+        return this.feedbackProvider.getResponsesAnalysis(feedbackId, options).then((responses) => {
             return this.addImageProfileToAttempts(responses.attempts).then((attempts) => {
                 responses.attempts = attempts;
 
@@ -193,10 +199,56 @@ export class AddonModFeedbackHelperProvider {
     }
 
     /**
+     * Handle a show entries link.
+     *
+     * @param navCtrl Nav controller to use to navigate. Can be undefined/null.
+     * @param params URL params.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when done.
+     */
+    handleShowEntriesLink(navCtrl: NavController, params: any, siteId?: string): Promise<any> {
+        siteId = siteId || this.sitesProvider.getCurrentSiteId();
+
+        const modal = this.domUtils.showModalLoading(),
+            moduleId = params.id;
+
+        return this.courseProvider.getModuleBasicInfo(moduleId, siteId).then((module) => {
+            let stateParams;
+
+            if (typeof params.showcompleted == 'undefined') {
+                // Param showcompleted not defined. Show entry list.
+                stateParams = {
+                    module: module,
+                    courseId: module.course
+                };
+
+                return this.linkHelper.goInSite(navCtrl, 'AddonModFeedbackRespondentsPage', stateParams, siteId);
+            }
+
+            return this.feedbackProvider.getAttempt(module.instance, params.showcompleted, {
+                cmId: moduleId,
+                readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+                siteId,
+            }).then((attempt) => {
+                stateParams = {
+                    moduleId: module.id,
+                    attempt: attempt,
+                    feedbackId: module.instance,
+                    courseId: module.course
+                };
+
+                return this.linkHelper.goInSite(navCtrl, 'AddonModFeedbackAttemptPage', stateParams, siteId);
+            });
+        }).finally(() => {
+            modal.dismiss();
+        });
+    }
+
+    /**
      * Add Image profile url field on attempts
      *
-     * @param  {any}          attempts Attempts array to get profile from.
-     * @return {Promise<any>}          Returns the same array with the profileimageurl added if found.
+     * @param attempts Attempts array to get profile from.
+     * @return Returns the same array with the profileimageurl added if found.
      */
     protected addImageProfileToAttempts(attempts: any): Promise<any> {
         const promises = attempts.map((attempt) => {
@@ -215,12 +267,12 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Helper function to open a feature in the app.
      *
-     * @param {string}        feature   Name of the feature to open.
-     * @param {NavController} navCtrl   NavController.
-     * @param {any}           module    Course module activity object.
-     * @param {number}        courseId  Course Id.
-     * @param {number}        [group=0] Course module activity object.
-     * @return {Promise<void>}    Resolved when navigation animation is done.
+     * @param feature Name of the feature to open.
+     * @param navCtrl NavController.
+     * @param module Course module activity object.
+     * @param courseId Course Id.
+     * @param group Course module activity object.
+     * @return Resolved when navigation animation is done.
      */
     openFeature(feature: string, navCtrl: NavController, module: any, courseId: number, group: number = 0): Promise<void> {
         const pageName = feature && feature != 'analysis' ? 'AddonModFeedback' + feature + 'Page' : 'AddonModFeedbackIndexPage',
@@ -250,8 +302,8 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Helper funtion for item type Label.
      *
-     * @param  {any} item Item to process.
-     * @return {any}      Item processed to show form.
+     * @param item Item to process.
+     * @return Item processed to show form.
      */
     protected getItemFormLabel(item: any): any {
         item.template = 'label';
@@ -264,8 +316,8 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Helper funtion for item type Info.
      *
-     * @param  {any} item Item to process.
-     * @return {any}      Item processed to show form.
+     * @param item Item to process.
+     * @return Item processed to show form.
      */
     protected getItemFormInfo(item: any): any {
         item.template = 'label';
@@ -278,7 +330,7 @@ export class AddonModFeedbackHelperProvider {
         } else if (type == this.MODE_RESPONSETIME) {
             item.value = '__CURRENT__TIMESTAMP__';
             const tempValue = typeof item.rawValue != 'undefined' ? item.rawValue * 1000 : new Date().getTime();
-            item.presentation = moment(tempValue).format('LLL');
+            item.presentation = this.timeUtils.userDate(tempValue);
         } else {
             // Errors on item, return false.
             return false;
@@ -290,16 +342,20 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Helper funtion for item type Numeric.
      *
-     * @param  {any} item Item to process.
-     * @return {any}      Item processed to show form.
+     * @param item Item to process.
+     * @return Item processed to show form.
      */
     protected getItemFormNumeric(item: any): any {
         item.template = 'numeric';
 
         const range = item.presentation.split(AddonModFeedbackProvider.LINE_SEP) || [];
-        item.rangefrom = range.length > 0 ? parseInt(range[0], 10) || '' : '';
-        item.rangeto = range.length > 1 ? parseInt(range[1], 10) || '' : '';
+        range[0] = range.length > 0 ? parseInt(range[0], 10) : undefined;
+        range[1] = range.length > 1 ? parseInt(range[1], 10) : undefined;
+
+        item.rangefrom = typeof range[0] == 'number' && !isNaN(range[0]) ? range[0] : '';
+        item.rangeto = typeof range[1] == 'number' && !isNaN(range[1]) ? range[1] : '';
         item.value = typeof item.rawValue != 'undefined' ? parseFloat(item.rawValue) : '';
+        item.postfix = this.getNumericBoundariesForDisplay(item.rangefrom, item.rangeto);
 
         return item;
     }
@@ -307,8 +363,8 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Helper funtion for item type Text field.
      *
-     * @param  {any} item Item to process.
-     * @return {any}      Item processed to show form.
+     * @param item Item to process.
+     * @return Item processed to show form.
      */
     protected getItemFormTextfield(item: any): any {
         item.template = 'textfield';
@@ -321,8 +377,8 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Helper funtion for item type Textarea.
      *
-     * @param  {any} item Item to process.
-     * @return {any}      Item processed to show form.
+     * @param item Item to process.
+     * @return Item processed to show form.
      */
     protected getItemFormTextarea(item: any): any {
         item.template = 'textarea';
@@ -334,8 +390,8 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Helper funtion for item type Multichoice.
      *
-     * @param  {any} item Item to process.
-     * @return {any}      Item processed to show form.
+     * @param item Item to process.
+     * @return Item processed to show form.
      */
     protected getItemFormMultichoice(item: any): any {
         let parts = item.presentation.split(AddonModFeedbackProvider.MULTICHOICE_TYPE_SEP) || [];
@@ -389,8 +445,8 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Helper funtion for item type Captcha.
      *
-     * @param  {any} item Item to process.
-     * @return {any}      Item processed to show form.
+     * @param item Item to process.
+     * @return Item processed to show form.
      */
     protected getItemFormCaptcha(item: any): any {
         const data = this.textUtils.parseJSON(item.otherdata);
@@ -408,9 +464,9 @@ export class AddonModFeedbackHelperProvider {
     /**
      * Process and returns item to print form.
      *
-     * @param {any}  item        Item to process.
-     * @param {boolean} preview  Previewing options.
-     * @return {any}             Item processed to show form.
+     * @param item Item to process.
+     * @param preview Previewing options.
+     * @return Item processed to show form.
      */
     getItemForm(item: any, preview: boolean): any {
         switch (item.typ) {
@@ -442,6 +498,29 @@ export class AddonModFeedbackHelperProvider {
         }
 
         return item;
+    }
+
+    /**
+     * Returns human-readable boundaries (min - max).
+     * Based on Moodle's get_boundaries_for_display.
+     *
+     * @param rangeFrom Range from.
+     * @param rangeTo Range to.
+     * @return Human-readable boundaries.
+     */
+    protected getNumericBoundariesForDisplay(rangeFrom: number, rangeTo: number): string {
+        const rangeFromSet = typeof rangeFrom == 'number',
+            rangeToSet = typeof rangeTo == 'number';
+
+        if (!rangeFromSet && rangeToSet) {
+            return ' (' + this.translate.instant('addon.mod_feedback.maximal') + ': ' + this.utils.formatFloat(rangeTo) + ')';
+        } else if (rangeFromSet && !rangeToSet) {
+            return ' (' + this.translate.instant('addon.mod_feedback.minimal') + ': ' + this.utils.formatFloat(rangeFrom) + ')';
+        } else if (!rangeFromSet && !rangeToSet) {
+            return '';
+        }
+
+        return ' (' + this.utils.formatFloat(rangeFrom) + ' - ' + this.utils.formatFloat(rangeTo) + ')';
     }
 
 }

@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,11 +28,11 @@ export class CoreSitePluginsMessageOutputHandler extends CoreSitePluginsBaseHand
     /**
      * Returns the data needed to render the handler.
      *
-     * @return {AddonMessageOutputHandlerData} Data.
+     * @return Data.
      */
     getDisplayData(): AddonMessageOutputHandlerData {
         return {
-            priority: this.handlerSchema.priority,
+            priority: this.handlerSchema.priority || 0,
             label: this.title,
             icon: this.handlerSchema.displaydata.icon,
             page: 'CoreSitePluginsPluginPage',
@@ -40,7 +40,8 @@ export class CoreSitePluginsMessageOutputHandler extends CoreSitePluginsBaseHand
                 title: this.title,
                 component: this.plugin.component,
                 method: this.handlerSchema.method,
-                initResult: this.initResult
+                initResult: this.initResult,
+                ptrEnabled: this.handlerSchema.ptrenabled,
             }
         };
     }

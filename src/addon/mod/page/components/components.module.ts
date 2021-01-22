@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ import { IonicModule } from 'ionic-angular';
 import { TranslateModule } from '@ngx-translate/core';
 import { CoreComponentsModule } from '@components/components.module';
 import { CoreDirectivesModule } from '@directives/directives.module';
+import { CorePipesModule } from '@pipes/pipes.module';
 import { CoreCourseComponentsModule } from '@core/course/components/components.module';
 import { AddonModPageIndexComponent } from './index/index';
 
@@ -31,6 +32,7 @@ import { AddonModPageIndexComponent } from './index/index';
         TranslateModule.forChild(),
         CoreComponentsModule,
         CoreDirectivesModule,
+        CorePipesModule,
         CoreCourseComponentsModule
     ],
     providers: [

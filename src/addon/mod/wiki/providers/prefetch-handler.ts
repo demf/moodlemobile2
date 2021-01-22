@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ import { Injectable } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { CoreAppProvider } from '@providers/app';
 import { CoreFilepoolProvider } from '@providers/filepool';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSitesReadingStrategy, CoreSitesCommonWSOptions } from '@providers/sites';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreCourseProvider } from '@core/course/providers/course';
@@ -24,9 +24,11 @@ import { CoreGroupsProvider } from '@providers/groups';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
 import { CoreCourseActivityPrefetchHandlerBase } from '@core/course/classes/activity-prefetch-handler';
 import { CoreCourseHelperProvider } from '@core/course/providers/helper';
-import { CoreGradesHelperProvider } from '@core/grades/providers/helper';
 import { CoreUserProvider } from '@core/user/providers/user';
 import { AddonModWikiProvider } from './wiki';
+import { AddonModWikiSyncProvider } from './wiki-sync';
+import { CoreFilterHelperProvider } from '@core/filter/providers/helper';
+import { CorePluginFileDelegate } from '@providers/plugin-file-delegate';
 
 /**
  * Handler to prefetch wikis.
@@ -38,32 +40,40 @@ export class AddonModWikiPrefetchHandler extends CoreCourseActivityPrefetchHandl
     component = AddonModWikiProvider.COMPONENT;
     updatesNames = /^.*files$|^pages$/;
 
-    constructor(translate: TranslateService, appProvider: CoreAppProvider, utils: CoreUtilsProvider,
-            courseProvider: CoreCourseProvider, filepoolProvider: CoreFilepoolProvider, sitesProvider: CoreSitesProvider,
-            domUtils: CoreDomUtilsProvider, protected wikiProvider: AddonModWikiProvider, protected userProvider: CoreUserProvider,
-            protected textUtils: CoreTextUtilsProvider, protected courseHelper: CoreCourseHelperProvider,
-            protected groupsProvider: CoreGroupsProvider, protected gradesHelper: CoreGradesHelperProvider) {
+    constructor(translate: TranslateService,
+            appProvider: CoreAppProvider,
+            utils: CoreUtilsProvider,
+            courseProvider: CoreCourseProvider,
+            filepoolProvider: CoreFilepoolProvider,
+            sitesProvider: CoreSitesProvider,
+            domUtils: CoreDomUtilsProvider,
+            filterHelper: CoreFilterHelperProvider,
+            pluginFileDelegate: CorePluginFileDelegate,
+            protected wikiProvider: AddonModWikiProvider,
+            protected userProvider: CoreUserProvider,
+            protected textUtils: CoreTextUtilsProvider,
+            protected courseHelper: CoreCourseHelperProvider,
+            protected groupsProvider: CoreGroupsProvider,
+            protected syncProvider: AddonModWikiSyncProvider) {
 
-        super(translate, appProvider, utils, courseProvider, filepoolProvider, sitesProvider, domUtils);
+        super(translate, appProvider, utils, courseProvider, filepoolProvider, sitesProvider, domUtils, filterHelper,
+                pluginFileDelegate);
     }
 
     /**
      * Returns a list of pages that can be downloaded.
      *
-     * @param {any} module The module object returned by WS.
-     * @param {number} courseId The course ID.
-     * @param {boolean} [offline] Whether it should return cached data. Has priority over ignoreCache.
-     * @param {boolean} [ignoreCache] Whether it should ignore cached data (it will always fail in offline or server down).
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any[]>} List of pages.
+     * @param module The module object returned by WS.
+     * @param courseId The course ID.
+     * @param options Other options.
+     * @return List of pages.
      */
-    protected getAllPages(module: any, courseId: number, offline?: boolean, ignoreCache?: boolean, siteId?: string)
-            : Promise<any[]> {
+    protected getAllPages(module: any, courseId: number, options: CoreSitesCommonWSOptions = {}): Promise<any[]> {
 
-        siteId = siteId || this.sitesProvider.getCurrentSiteId();
+        options.siteId = options.siteId || this.sitesProvider.getCurrentSiteId();
 
-        return this.wikiProvider.getWiki(courseId, module.id, offline, siteId).then((wiki) => {
-            return this.wikiProvider.getWikiPageList(wiki, offline, ignoreCache, siteId);
+        return this.wikiProvider.getWiki(courseId, module.id, options).then((wiki) => {
+            return this.wikiProvider.getWikiPageList(wiki, options);
         }).catch(() => {
             // Wiki not found, return empty list.
             return [];
@@ -73,21 +83,24 @@ export class AddonModWikiPrefetchHandler extends CoreCourseActivityPrefetchHandl
     /**
      * Get the download size of a module.
      *
-     * @param {any} module Module.
-     * @param {Number} courseId Course ID the module belongs to.
-     * @param {boolean} [single] True if we're downloading a single module, false if we're downloading a whole section.
-     * @return {Promise<{size: number, total: boolean}>} Promise resolved with the size and a boolean indicating if it was able
-     *                                                   to calculate the total size.
+     * @param module Module.
+     * @param courseId Course ID the module belongs to.
+     * @param single True if we're downloading a single module, false if we're downloading a whole section.
+     * @return Promise resolved with the size and a boolean indicating if it was able
+     *         to calculate the total size.
      */
     getDownloadSize(module: any, courseId: number, single?: boolean): Promise<{ size: number, total: boolean }> {
         const promises = [],
             siteId = this.sitesProvider.getCurrentSiteId();
 
         promises.push(this.getFiles(module, courseId, single, siteId).then((files) => {
-            return this.utils.sumFileSizes(files);
+            return this.pluginFileDelegate.getFilesDownloadSize(files);
         }));
 
-        promises.push(this.getAllPages(module, courseId, false, true, siteId).then((pages) => {
+        promises.push(this.getAllPages(module, courseId, {
+            readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+            siteId,
+        }).then((pages) => {
             let size = 0;
 
             pages.forEach((page) => {
@@ -110,20 +123,20 @@ export class AddonModWikiPrefetchHandler extends CoreCourseActivityPrefetchHandl
     /**
      * Get list of files. If not defined, we'll assume they're in module.contents.
      *
-     * @param {any} module Module.
-     * @param {number} courseId Course ID the module belongs to.
-     * @param {boolean} [single] True if we're downloading a single module, false if we're downloading a whole section.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any[]>} Promise resolved with the list of files.
+     * @param module Module.
+     * @param courseId Course ID the module belongs to.
+     * @param single True if we're downloading a single module, false if we're downloading a whole section.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with the list of files.
      */
     getFiles(module: any, courseId: number, single?: boolean, siteId?: string): Promise<any[]> {
 
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
 
-        return this.wikiProvider.getWiki(courseId, module.id, false, siteId).then((wiki) => {
+        return this.wikiProvider.getWiki(courseId, module.id, {siteId}).then((wiki) => {
             const introFiles = this.getIntroFilesFromInstance(module, wiki);
 
-            return this.wikiProvider.getWikiFileList(wiki, false, false, siteId).then((files) => {
+            return this.wikiProvider.getWikiFileList(wiki, {siteId}).then((files) => {
                 return introFiles.concat(files);
             });
         }).catch(() => {
@@ -135,9 +148,9 @@ export class AddonModWikiPrefetchHandler extends CoreCourseActivityPrefetchHandl
     /**
      * Invalidate the prefetched content.
      *
-     * @param {number} moduleId The module ID.
-     * @param {number} courseId The course ID the module belongs to.
-     * @return {Promise<any>} Promise resolved when the data is invalidated.
+     * @param moduleId The module ID.
+     * @param courseId The course ID the module belongs to.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateContent(moduleId: number, courseId: number): Promise<any> {
         return this.wikiProvider.invalidateContent(moduleId, courseId);
@@ -146,11 +159,11 @@ export class AddonModWikiPrefetchHandler extends CoreCourseActivityPrefetchHandl
     /**
      * Prefetch a module.
      *
-     * @param {any} module Module.
-     * @param {number} courseId Course ID the module belongs to.
-     * @param {boolean} [single] True if we're downloading a single module, false if we're downloading a whole section.
-     * @param {string} [dirPath] Path of the directory where to store all the content files.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param module Module.
+     * @param courseId Course ID the module belongs to.
+     * @param single True if we're downloading a single module, false if we're downloading a whole section.
+     * @param dirPath Path of the directory where to store all the content files.
+     * @return Promise resolved when done.
      */
     prefetch(module: any, courseId?: number, single?: boolean, dirPath?: string): Promise<any> {
         // Get the download time of the package before starting the download (otherwise we'd always get current time).
@@ -168,40 +181,43 @@ export class AddonModWikiPrefetchHandler extends CoreCourseActivityPrefetchHandl
     /**
      * Prefetch a wiki.
      *
-     * @param {any} module Module.
-     * @param {number} courseId Course ID the module belongs to.
-     * @param {boolean} single True if we're downloading a single module, false if we're downloading a whole section.
-     * @param {string} siteId Site ID.
-     * @param {number} downloadTime The previous download time, 0 if no previous download.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param module Module.
+     * @param courseId Course ID the module belongs to.
+     * @param single True if we're downloading a single module, false if we're downloading a whole section.
+     * @param siteId Site ID.
+     * @param downloadTime The previous download time, 0 if no previous download.
+     * @return Promise resolved when done.
      */
     protected prefetchWiki(module: any, courseId: number, single: boolean, siteId: string, downloadTime: number): Promise<any> {
         const userId = this.sitesProvider.getCurrentSiteUserId();
 
+        const commonOptions = {
+            readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+            siteId,
+        };
+        const modOptions = {
+            cmId: module.id,
+            ...commonOptions, // Include all common options.
+        };
+
         // Get the list of pages.
-        return this.getAllPages(module, courseId, false, true, siteId).then((pages) => {
+        return this.getAllPages(module, courseId, commonOptions).then((pages) => {
             const promises = [];
 
             pages.forEach((page) => {
                 // Fetch page contents if it needs to be fetched.
                 if (page.timemodified > downloadTime) {
-                    promises.push(this.wikiProvider.getPageContents(page.id, false, true, siteId));
+                    promises.push(this.wikiProvider.getPageContents(page.id, modOptions));
                 }
             });
 
             // Fetch group data.
-            promises.push(this.groupsProvider.getActivityGroupMode(module.id, siteId).then((groupMode) => {
-                if (groupMode === CoreGroupsProvider.SEPARATEGROUPS || groupMode === CoreGroupsProvider.VISIBLEGROUPS) {
-                    // Get the groups available for the user.
-                    return this.groupsProvider.getActivityAllowedGroups(module.id, userId, siteId);
-                }
-            }));
+            promises.push(this.groupsProvider.getActivityGroupInfo(module.id, false, userId, siteId));
 
             // Fetch info to provide wiki links.
-            promises.push(this.wikiProvider.getWiki(courseId, module.id, false, siteId).then((wiki) => {
+            promises.push(this.wikiProvider.getWiki(courseId, module.id, {siteId}).then((wiki) => {
                 return this.courseHelper.getModuleCourseIdByInstance(wiki.id, 'wiki', siteId);
             }));
-            promises.push(this.courseProvider.getModuleBasicInfo(module.id, siteId));
 
             // Get related page files and fetch them.
             promises.push(this.getFiles(module, courseId, single, siteId).then((files) => {
@@ -210,5 +226,17 @@ export class AddonModWikiPrefetchHandler extends CoreCourseActivityPrefetchHandl
 
             return Promise.all(promises);
         });
+    }
+
+    /**
+     * Sync a module.
+     *
+     * @param module Module.
+     * @param courseId Course ID the module belongs to
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when done.
+     */
+    sync(module: any, courseId: number, siteId?: any): Promise<any> {
+        return this.syncProvider.syncWiki(module.instance, module.course, module.id, siteId);
     }
 }

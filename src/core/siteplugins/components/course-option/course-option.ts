@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { Component, OnInit, Input, ViewChild } from '@angular/core';
+import { CoreUtils } from '@providers/utils/utils';
 import { CoreSitePluginsProvider } from '../../providers/siteplugins';
 import { CoreSitePluginsPluginContentComponent } from '../plugin-content/plugin-content';
 
@@ -33,6 +34,7 @@ export class CoreSitePluginsCourseOptionComponent implements OnInit {
     method: string;
     args: any;
     initResult: any;
+    ptrEnabled = true;
 
     constructor(protected sitePluginsProvider: CoreSitePluginsProvider) { }
 
@@ -49,6 +51,7 @@ export class CoreSitePluginsCourseOptionComponent implements OnInit {
                     courseid: this.courseId,
                 };
                 this.initResult = handler.initResult;
+                this.ptrEnabled = !CoreUtils.instance.isFalseOrZero(handler.handlerSchema.ptrenabled);
             }
         }
     }
@@ -56,7 +59,7 @@ export class CoreSitePluginsCourseOptionComponent implements OnInit {
     /**
      * Refresh the data.
      *
-     * @param {any} refresher Refresher.
+     * @param refresher Refresher.
      */
     refreshData(refresher: any): void {
         this.content.refreshContent(false).finally(() => {

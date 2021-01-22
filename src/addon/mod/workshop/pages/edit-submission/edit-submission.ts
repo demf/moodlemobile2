@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { IonicPage, NavParams, NavController } from 'ionic-angular';
 import { FormGroup, FormBuilder, Validators } from '@angular/forms';
 import { TranslateService } from '@ngx-translate/core';
@@ -37,6 +37,8 @@ import { AddonModWorkshopOfflineProvider } from '../../providers/offline';
 })
 export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
 
+    @ViewChild('editFormEl') formElement: ElementRef;
+
     module: any;
     courseId: number;
     access: any;
@@ -51,6 +53,7 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
     component = AddonModWorkshopProvider.COMPONENT;
     componentId: number;
     editForm: FormGroup; // The form group.
+    editorExtraParams: {[name: string]: any} = {};
 
     protected workshopId: number;
     protected submissionId: number;
@@ -62,6 +65,10 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
     protected siteId: string;
     protected workshop: any;
     protected isDestroyed = false;
+    protected textAvailable = false;
+    protected textRequired = false;
+    protected fileAvailable = false;
+    protected fileRequired = false;
 
     constructor(navParams: NavParams, sitesProvider: CoreSitesProvider, protected fileUploaderProvider: CoreFileUploaderProvider,
             protected workshopProvider: AddonModWorkshopProvider, protected workshopOffline: AddonModWorkshopOfflineProvider,
@@ -82,6 +89,10 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
         this.editForm = new FormGroup({});
         this.editForm.addControl('title', this.fb.control('', Validators.required));
         this.editForm.addControl('content', this.fb.control(''));
+
+        if (this.submissionId) {
+            this.editorExtraParams.id = this.submissionId;
+        }
     }
 
     /**
@@ -99,44 +110,47 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
     /**
      * Check if we can leave the page or not.
      *
-     * @return {boolean|Promise<void>} Resolved if we can leave it, rejected if not.
+     * @return Resolved if we can leave it, rejected if not.
      */
-    ionViewCanLeave(): boolean | Promise<void> {
+    async ionViewCanLeave(): Promise<void> {
         if (this.forceLeave) {
-            return true;
+            return;
         }
-
-        let promise;
 
         // Check if data has changed.
-        if (!this.hasDataChanged()) {
-            promise = Promise.resolve();
-        } else {
+        if (this.hasDataChanged()) {
             // Show confirmation if some data has been modified.
-            promise = this.domUtils.showConfirm(this.translate.instant('core.confirmcanceledit'));
+            await this.domUtils.showConfirm(this.translate.instant('core.confirmcanceledit'));
         }
 
-        return promise.then(() => {
-            if (this.submission.attachmentfiles) {
-                // Delete the local files from the tmp folder.
-                this.fileUploaderProvider.clearTmpFiles(this.submission.attachmentfiles);
-            }
-        });
+        if (this.submission.attachmentfiles) {
+            // Delete the local files from the tmp folder.
+            this.fileUploaderProvider.clearTmpFiles(this.submission.attachmentfiles);
+        }
+
+        this.domUtils.triggerFormCancelledEvent(this.formElement, this.siteId);
     }
 
     /**
      * Fetch the submission data.
      *
-     * @return {Promise<void>} Resolved when done.
+     * @return Resolved when done.
      */
     protected fetchSubmissionData(): Promise<void> {
         return this.workshopProvider.getWorkshop(this.courseId, this.module.id).then((workshopData) => {
             this.workshop = workshopData;
+            this.textAvailable = (this.workshop.submissiontypetext != AddonModWorkshopProvider.SUBMISSION_TYPE_DISABLED);
+            this.textRequired = (this.workshop.submissiontypetext == AddonModWorkshopProvider.SUBMISSION_TYPE_REQUIRED);
+            this.fileAvailable = (this.workshop.submissiontypefile != AddonModWorkshopProvider.SUBMISSION_TYPE_DISABLED);
+            this.fileRequired = (this.workshop.submissiontypefile == AddonModWorkshopProvider.SUBMISSION_TYPE_REQUIRED);
+
+            this.editForm.controls.content.setValidators(this.textRequired ? Validators.required : null);
 
             if (this.submissionId > 0) {
                 this.editing = true;
 
-                return this.workshopHelper.getSubmissionById(this.workshopId, this.submissionId).then((submissionData) => {
+                return this.workshopHelper.getSubmissionById(this.workshopId, this.submissionId, {cmId: this.module.id})
+                        .then((submissionData) => {
                     this.submission = submissionData;
 
                     const canEdit = (this.userId == submissionData.authorid && this.access.cansubmit &&
@@ -215,13 +229,24 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
     /**
      * Get the form input data.
      *
-     * @return {any} Object with all the info.
+     * @return Object with all the info.
      */
     protected getInputData(): any {
         const submissionId = this.submission.id || 'newsub';
 
-        const values = this.editForm.value;
-        values['attachmentfiles'] = this.fileSessionprovider.getFiles(this.component, this.workshopId + '_' + submissionId) || [];
+        const values = {
+            title: this.editForm.value.title,
+            content: null,
+            attachmentfiles: []
+        };
+
+        if (this.textAvailable) {
+            values.content = this.editForm.value.content || '';
+        }
+
+        if (this.fileAvailable) {
+            values.attachmentfiles = this.fileSessionprovider.getFiles(this.component, this.workshopId + '_' + submissionId) || [];
+        }
 
         return values;
     }
@@ -229,7 +254,7 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
     /**
      * Check if data has changed.
      *
-     * @return {boolean} True if changed or false if not.
+     * @return True if changed or false if not.
      */
     protected hasDataChanged(): boolean {
         if (!this.loaded) {
@@ -242,31 +267,15 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
             return false;
         }
 
-        if (this.originalData.title != inputData.title || this.originalData.content != inputData.content) {
+        if (this.originalData.title != inputData.title || this.textAvailable && this.originalData.content != inputData.content) {
             return true;
         }
 
-        return this.fileUploaderProvider.areFileListDifferent(inputData.attachmentfiles, this.originalData.attachmentfiles);
-    }
-
-    /**
-     * Pull to refresh.
-     *
-     * @param {any} refresher Refresher.
-     */
-    refreshSubmission(refresher: any): void {
-        if (this.loaded) {
-            const promises = [];
-
-            promises.push(this.workshopProvider.invalidateSubmissionData(this.workshopId, this.submission.id));
-            promises.push(this.workshopProvider.invalidateSubmissionsData(this.workshopId));
-
-            Promise.all(promises).finally(() => {
-                return this.fetchSubmissionData();
-            }).finally(() => {
-                refresher.complete();
-            });
+        if (this.fileAvailable) {
+            return this.fileUploaderProvider.areFileListDifferent(inputData.attachmentfiles, this.originalData.attachmentfiles);
         }
+
+        return false;
     }
 
     /**
@@ -290,7 +299,7 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
     /**
      * Send submission and save.
      *
-     * @return {Promise<any>} Resolved when done.
+     * @return Resolved when done.
      */
     protected saveSubmission(): Promise<any> {
         const inputData = this.getInputData();
@@ -300,7 +309,11 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
 
             return Promise.reject(null);
         }
-        if (!inputData.content) {
+
+        const noText = this.textUtils.htmlIsBlank(inputData.content);
+        const noFiles = !inputData.attachmentfiles.length;
+
+        if ((this.textRequired && noText) || (this.fileRequired && noFiles) || (noText && noFiles)) {
             this.domUtils.showAlertTranslated('core.notice', 'addon.mod_workshop.submissionrequiredcontent');
 
             return Promise.reject(null);
@@ -313,7 +326,9 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
             submissionId = this.submission.id;
 
         // Add some HTML to the message if needed.
-        inputData.content = this.textUtils.formatHtmlLines(inputData.content);
+        if (this.textAvailable) {
+            inputData.content = this.textUtils.formatHtmlLines(inputData.content);
+        }
 
         // Upload attachments first if any.
         allowOffline = !inputData.attachmentfiles.length;
@@ -327,12 +342,16 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
             return this.workshopHelper.uploadOrStoreSubmissionFiles(this.workshopId, this.submission.id,
                 inputData.attachmentfiles, this.editing, saveOffline);
         }).then((attachmentsId) => {
+            if (!saveOffline && !this.fileAvailable) {
+                attachmentsId = null;
+            }
+
             if (this.editing) {
                 if (saveOffline) {
                     // Save submission in offline.
                     return this.workshopOffline.saveSubmission(this.workshopId, this.courseId, inputData.title,
                             inputData.content, attachmentsId, submissionId, 'update').then(() => {
-                        // Don't return anything.
+                        return false;
                     });
                 }
 
@@ -345,8 +364,8 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
             if (saveOffline) {
                 // Save submission in offline.
                 return this.workshopOffline.saveSubmission(this.workshopId, this.courseId, inputData.title, inputData.content,
-                    attachmentsId, submissionId, 'add').then(() => {
-                    // Don't return anything.
+                        attachmentsId, submissionId, 'add').then(() => {
+                    return false;
                 });
             }
 
@@ -355,6 +374,9 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
             return this.workshopProvider.addSubmission(this.workshopId, this.courseId, inputData.title, inputData.content,
                 attachmentsId, undefined, submissionId, allowOffline);
         }).then((newSubmissionId) => {
+
+            this.domUtils.triggerFormSubmittedEvent(this.formElement, !!newSubmissionId, this.siteId);
+
             const data = {
                 workshopId: this.workshopId,
                 cmId: this.module.cmid
@@ -366,6 +388,8 @@ export class AddonModWorkshopEditSubmissionPage implements OnInit, OnDestroy {
                 this.workshopHelper.deleteSubmissionStoredFiles(this.workshopId, submissionId, this.editing);
                 data['submissionId'] = newSubmissionId;
             }
+
+            this.eventsProvider.trigger(CoreEventsProvider.ACTIVITY_DATA_SENT, { module: 'workshop' });
 
             const promise = newSubmissionId ? this.workshopProvider.invalidateSubmissionData(this.workshopId, newSubmissionId) :
                 Promise.resolve();

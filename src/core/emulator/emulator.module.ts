@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,18 +18,22 @@ import { Platform } from 'ionic-angular';
 // Ionic Native services.
 import { Badge } from '@ionic-native/badge';
 import { Camera } from '@ionic-native/camera';
+import { Chooser } from '@ionic-native/chooser';
 import { Clipboard } from '@ionic-native/clipboard';
 import { Device } from '@ionic-native/device';
 import { File } from '@ionic-native/file';
 import { FileOpener } from '@ionic-native/file-opener';
 import { FileTransfer } from '@ionic-native/file-transfer';
+import { Geolocation } from '@ionic-native/geolocation';
 import { Globalization } from '@ionic-native/globalization';
 import { InAppBrowser } from '@ionic-native/in-app-browser';
 import { Keyboard } from '@ionic-native/keyboard';
 import { LocalNotifications } from '@ionic-native/local-notifications';
+import { Media } from '@ionic-native/media';
 import { MediaCapture } from '@ionic-native/media-capture';
 import { Network } from '@ionic-native/network';
 import { Push } from '@ionic-native/push';
+import { QRScanner } from '@ionic-native/qr-scanner';
 import { SplashScreen } from '@ionic-native/splash-screen';
 import { StatusBar } from '@ionic-native/status-bar';
 import { SQLite } from '@ionic-native/sqlite';
@@ -43,18 +47,21 @@ import { ClipboardMock } from './providers/clipboard';
 import { FileMock } from './providers/file';
 import { FileOpenerMock } from './providers/file-opener';
 import { FileTransferMock } from './providers/file-transfer';
+import { GeolocationMock } from './providers/geolocation';
 import { GlobalizationMock } from './providers/globalization';
 import { InAppBrowserMock } from './providers/inappbrowser';
 import { LocalNotificationsMock } from './providers/local-notifications';
 import { MediaCaptureMock } from './providers/media-capture';
 import { NetworkMock } from './providers/network';
 import { PushMock } from './providers/push';
+import { QRScannerMock } from './providers/qr-scanner';
 import { ZipMock } from './providers/zip';
 
 import { CoreEmulatorHelperProvider } from './providers/helper';
 import { CoreEmulatorCaptureHelperProvider } from './providers/capture-helper';
 import { CoreAppProvider } from '@providers/app';
 import { CoreFileProvider } from '@providers/file';
+import { CoreLoggerProvider } from '@providers/logger';
 import { CoreMimetypeUtilsProvider } from '@providers/utils/mimetype';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
 import { CoreUrlUtilsProvider } from '@providers/utils/url';
@@ -70,6 +77,7 @@ export const IONIC_NATIVE_PROVIDERS = [
     File,
     FileOpener,
     FileTransfer,
+    Geolocation,
     Globalization,
     InAppBrowser,
     Keyboard,
@@ -77,6 +85,7 @@ export const IONIC_NATIVE_PROVIDERS = [
     MediaCapture,
     Network,
     Push,
+    QRScanner,
     SplashScreen,
     StatusBar,
     SQLite,
@@ -107,6 +116,7 @@ export const IONIC_NATIVE_PROVIDERS = [
                 return appProvider.isMobile() ? new Badge() : new BadgeMock(appProvider);
             }
         },
+        Chooser,
         CoreEmulatorHelperProvider,
         CoreEmulatorCaptureHelperProvider,
         {
@@ -149,6 +159,13 @@ export const IONIC_NATIVE_PROVIDERS = [
             }
         },
         {
+            provide: Geolocation,
+            deps: [CoreAppProvider],
+            useFactory: (appProvider: CoreAppProvider): Geolocation => {
+                return appProvider.isMobile() ? new Geolocation() : new GeolocationMock();
+            }
+        },
+        {
             provide: Globalization,
             deps: [CoreAppProvider],
             useFactory: (appProvider: CoreAppProvider): Globalization => {
@@ -180,6 +197,7 @@ export const IONIC_NATIVE_PROVIDERS = [
                 return appProvider.isMobile() ? new MediaCapture() : new MediaCaptureMock(captureHelper);
             }
         },
+        Media,
         {
             provide: Network,
             deps: [Platform],
@@ -194,6 +212,13 @@ export const IONIC_NATIVE_PROVIDERS = [
             useFactory: (appProvider: CoreAppProvider): Push => {
                 // Use platform instead of CoreAppProvider to prevent circular dependencies.
                 return appProvider.isMobile() ? new Push() : new PushMock(appProvider);
+            }
+        },
+        {
+            provide: QRScanner,
+            deps: [CoreAppProvider, CoreLoggerProvider],
+            useFactory: (appProvider: CoreAppProvider, loggerProvider: CoreLoggerProvider): QRScanner => {
+                return appProvider.isMobile() ? new QRScanner() : new QRScannerMock(loggerProvider);
             }
         },
         SplashScreen,
@@ -211,7 +236,8 @@ export const IONIC_NATIVE_PROVIDERS = [
     ]
 })
 export class CoreEmulatorModule {
-    constructor(appProvider: CoreAppProvider, initDelegate: CoreInitDelegate, helper: CoreEmulatorHelperProvider) {
+    constructor(appProvider: CoreAppProvider, initDelegate: CoreInitDelegate, helper: CoreEmulatorHelperProvider,
+            platform: Platform) {
         const win = <any> window; // Convert the "window" to "any" type to be able to use non-standard properties.
 
         // Emulate Custom URL Scheme plugin in desktop apps.
@@ -224,7 +250,7 @@ export class CoreEmulatorModule {
 
             // Listen for 'resume' events.
             require('electron').ipcRenderer.on('coreAppFocused', () => {
-                document.dispatchEvent(new Event('resume'));
+                platform.resume.emit();
             });
         }
 

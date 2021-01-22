@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 import { Component, Input, OnInit } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { CoreAppProvider } from '@providers/app';
+import { CoreSites } from '@providers/sites';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
 import { CoreFileUploaderProvider } from '@core/fileuploader/providers/fileuploader';
@@ -39,12 +40,13 @@ import { CoreFileUploaderHelperProvider } from '@core/fileuploader/providers/hel
 })
 export class CoreAttachmentsComponent implements OnInit {
     @Input() files: any[]; // List of attachments. New attachments will be added to this array.
-    @Input() maxSize: number; // Max size for attachments. If not defined, 0 or -1, unknown size.
-    @Input() maxSubmissions: number; // Max number of attachments. If -1 or not defined, unknown limit.
+    @Input() maxSize: number; // Max size for attachments. -1 means unlimited, 0 means user max size, not defined means unknown.
+    @Input() maxSubmissions: number; // Max number of attachments. -1 means unlimited, not defined means unknown limit.
     @Input() component: string; // Component the downloaded files will be linked to.
     @Input() componentId: string | number; // Component ID.
     @Input() allowOffline: boolean | string; // Whether to allow selecting files in offline.
     @Input() acceptedTypes: string; // List of supported filetypes. If undefined, all types supported.
+    @Input() required: boolean; // Whether to display the required mark.
 
     maxSizeReadable: string;
     maxSubmissionsReadable: string;
@@ -60,23 +62,36 @@ export class CoreAttachmentsComponent implements OnInit {
      * Component being initialized.
      */
     ngOnInit(): void {
-        this.maxSize = Number(this.maxSize); // Make sure it's defined and it's a number.
-        this.maxSize = !isNaN(this.maxSize) && this.maxSize > 0 ? this.maxSize : -1;
+        this.maxSize = this.maxSize !== null ? Number(this.maxSize) : NaN;
 
-        if (this.maxSize == -1) {
-            this.maxSizeReadable = this.translate.instant('core.unknown');
-        } else {
+        if (this.maxSize === 0) {
+            const currentSite = CoreSites.instance.getCurrentSite();
+            const siteInfo = currentSite && currentSite.getInfo();
+
+            if (siteInfo && siteInfo.usermaxuploadfilesize) {
+                this.maxSize = siteInfo.usermaxuploadfilesize;
+                this.maxSizeReadable = this.textUtils.bytesToSize(this.maxSize, 2);
+            } else {
+                this.maxSizeReadable = this.translate.instant('core.unknown');
+            }
+        } else if (this.maxSize > 0) {
             this.maxSizeReadable = this.textUtils.bytesToSize(this.maxSize, 2);
+        } else if (this.maxSize === -1) {
+            this.maxSizeReadable = this.translate.instant('core.unlimited');
+        } else {
+            this.maxSizeReadable = this.translate.instant('core.unknown');
         }
 
         if (typeof this.maxSubmissions == 'undefined' || this.maxSubmissions < 0) {
-            this.maxSubmissionsReadable = this.translate.instant('core.unknown');
+            this.maxSubmissionsReadable = this.maxSubmissions < 0 ? undefined : this.translate.instant('core.unknown');
             this.unlimitedFiles = true;
         } else {
             this.maxSubmissionsReadable = String(this.maxSubmissions);
         }
 
-        if (this.acceptedTypes && this.acceptedTypes.trim()) {
+        this.acceptedTypes = this.acceptedTypes && this.acceptedTypes.trim();
+
+        if (this.acceptedTypes && this.acceptedTypes != '*') {
             this.fileTypes = this.fileUploaderProvider.prepareFiletypeList(this.acceptedTypes);
         }
     }
@@ -103,14 +118,14 @@ export class CoreAttachmentsComponent implements OnInit {
     /**
      * Delete a file from the list.
      *
-     * @param {number} index The index of the file.
-     * @param {boolean} [askConfirm] Whether to ask confirm.
+     * @param index The index of the file.
+     * @param askConfirm Whether to ask confirm.
      */
     delete(index: number, askConfirm?: boolean): void {
         let promise;
 
         if (askConfirm) {
-            promise = this.domUtils.showConfirm(this.translate.instant('core.confirmdeletefile'));
+            promise = this.domUtils.showDeleteConfirm('core.confirmdeletefile');
         } else {
             promise = Promise.resolve();
         }
@@ -126,8 +141,8 @@ export class CoreAttachmentsComponent implements OnInit {
     /**
      * A file was renamed.
      *
-     * @param {number} index Index of the file.
-     * @param {any} data The data received.
+     * @param index Index of the file.
+     * @param data The data received.
      */
     renamed(index: number, data: any): void {
         this.files[index] = data.file;

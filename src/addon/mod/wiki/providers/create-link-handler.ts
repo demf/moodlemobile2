@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,21 +40,23 @@ export class AddonModWikiCreateLinkHandler extends CoreContentLinksHandlerBase {
     /**
      * Check if the current view is a wiki page of the same wiki.
      *
-     * @param {ViewController} activeView Active view.
-     * @param {number} subwikiId Subwiki ID to check.
-     * @param {string} siteId Site ID.
-     * @return {Promise<boolean>} Promise resolved with boolean: whether current view belongs to the same wiki.
+     * @param activeView Active view.
+     * @param subwikiId Subwiki ID to check.
+     * @param siteId Site ID.
+     * @return Promise resolved with boolean: whether current view belongs to the same wiki.
      */
     protected currentStateIsSameWiki(activeView: ViewController, subwikiId: number, siteId: string): Promise<boolean> {
 
         if (activeView && activeView.component.name == 'AddonModWikiIndexPage') {
+            const moduleId = activeView.data.module && activeView.data.module.id;
+
             if (activeView.data.subwikiId == subwikiId) {
                 // Same subwiki, so it's same wiki.
                 return Promise.resolve(true);
 
             } else if (activeView.data.pageId) {
                 // Get the page contents to check the subwiki.
-                return this.wikiProvider.getPageContents(activeView.data.pageId, false, false, siteId).then((page) => {
+                return this.wikiProvider.getPageContents(activeView.data.pageId, {cmId: moduleId, siteId}).then((page) => {
                     return page.subwikiid == subwikiId;
                 }).catch(() => {
                     // Not found, return false.
@@ -63,15 +65,14 @@ export class AddonModWikiCreateLinkHandler extends CoreContentLinksHandlerBase {
 
             } else if (activeView.data.wikiId) {
                 // Check if the subwiki belongs to this wiki.
-                return this.wikiProvider.wikiHasSubwiki(activeView.data.wikiId, subwikiId, false, false, siteId);
+                return this.wikiProvider.wikiHasSubwiki(activeView.data.wikiId, subwikiId, {cmId: moduleId, siteId});
 
             } else if (activeView.data.courseId && activeView.data.module) {
-                const moduleId = activeView.data.module && activeView.data.module.id;
                 if (moduleId) {
                     // Get the wiki.
-                    return this.wikiProvider.getWiki(activeView.data.courseId, moduleId, false, siteId).then((wiki) => {
+                    return this.wikiProvider.getWiki(activeView.data.courseId, moduleId, {siteId}).then((wiki) => {
                         // Check if the subwiki belongs to this wiki.
-                        return this.wikiProvider.wikiHasSubwiki(wiki.id, subwikiId, false, false, siteId);
+                        return this.wikiProvider.wikiHasSubwiki(wiki.id, subwikiId, {cmId: moduleId, siteId});
                     }).catch(() => {
                         // Not found, return false.
                         return false;
@@ -86,11 +87,11 @@ export class AddonModWikiCreateLinkHandler extends CoreContentLinksHandlerBase {
     /**
      * Get the list of actions for a link (url).
      *
-     * @param {string[]} siteIds List of sites the URL belongs to.
-     * @param {string} url The URL to treat.
-     * @param {any} params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
-     * @param {number} [courseId] Course ID related to the URL. Optional but recommended.
-     * @return {CoreContentLinksAction[]|Promise<CoreContentLinksAction[]>} List of (or promise resolved with list of) actions.
+     * @param siteIds List of sites the URL belongs to.
+     * @param url The URL to treat.
+     * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
+     * @param courseId Course ID related to the URL. Optional but recommended.
+     * @return List of (or promise resolved with list of) actions.
      */
     getActions(siteIds: string[], url: string, params: any, courseId?: number):
             CoreContentLinksAction[] | Promise<CoreContentLinksAction[]> {

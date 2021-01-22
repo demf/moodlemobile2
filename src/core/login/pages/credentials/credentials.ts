@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component } from '@angular/core';
+import { Component, ViewChild, ElementRef, OnDestroy } from '@angular/core';
 import { IonicPage, NavController, NavParams } from 'ionic-angular';
 import { TranslateService } from '@ngx-translate/core';
 import { CoreAppProvider } from '@providers/app';
+import { CoreUtils } from '@providers/utils/utils';
 import { CoreEventsProvider } from '@providers/events';
 import { CoreSitesProvider } from '@providers/sites';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
-import { CoreUtilsProvider } from '@providers/utils/utils';
+import { CoreUrlUtils } from '@providers/utils/url';
 import { CoreLoginHelperProvider } from '../../providers/helper';
-import { CoreContentLinksDelegate } from '@core/contentlinks/providers/delegate';
-import { CoreContentLinksHelperProvider } from '@core/contentlinks/providers/helper';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { CoreConfigConstants } from '../../../../configconstants';
+import { CoreCustomURLSchemes } from '@providers/urlschemes';
+import { Subscription } from 'rxjs';
 
 /**
  * Page to enter the user credentials.
@@ -33,7 +35,10 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
     selector: 'page-core-login-credentials',
     templateUrl: 'credentials.html',
 })
-export class CoreLoginCredentialsPage {
+export class CoreLoginCredentialsPage implements OnDestroy {
+
+    @ViewChild('credentialsForm') formElement: ElementRef;
+
     credForm: FormGroup;
     siteUrl: string;
     siteChecked = false;
@@ -44,20 +49,30 @@ export class CoreLoginCredentialsPage {
     identityProviders: any[];
     pageLoaded = false;
     isBrowserSSO = false;
+    isFixedUrlSet = false;
+    showForgottenPassword = true;
+    showScanQR: boolean;
 
     protected siteConfig;
     protected eventThrown = false;
     protected viewLeft = false;
     protected siteId: string;
     protected urlToOpen: string;
+    protected valueChangeSubscription: Subscription;
 
-    constructor(private navCtrl: NavController, navParams: NavParams, fb: FormBuilder, private appProvider: CoreAppProvider,
-            private sitesProvider: CoreSitesProvider, private loginHelper: CoreLoginHelperProvider,
-            private domUtils: CoreDomUtilsProvider, private translate: TranslateService, private utils: CoreUtilsProvider,
-            private eventsProvider: CoreEventsProvider, private contentLinksDelegate: CoreContentLinksDelegate,
-            private contentLinksHelper: CoreContentLinksHelperProvider) {
+    constructor(private navCtrl: NavController,
+            navParams: NavParams,
+            fb: FormBuilder,
+            private appProvider: CoreAppProvider,
+            private sitesProvider: CoreSitesProvider,
+            private loginHelper: CoreLoginHelperProvider,
+            private domUtils: CoreDomUtilsProvider,
+            private translate: TranslateService,
+            private eventsProvider: CoreEventsProvider) {
 
         this.siteUrl = navParams.get('siteUrl');
+        this.siteName = navParams.get('siteName') || null;
+        this.logoUrl = !CoreConfigConstants.forceLoginLogo && navParams.get('logoUrl') || null;
         this.siteConfig = navParams.get('siteConfig');
         this.urlToOpen = navParams.get('urlToOpen');
 
@@ -65,6 +80,39 @@ export class CoreLoginCredentialsPage {
             username: [navParams.get('username') || '', Validators.required],
             password: ['', Validators.required]
         });
+
+        const canScanQR = CoreUtils.instance.canScanQR();
+        if (canScanQR) {
+            if (typeof CoreConfigConstants['displayqroncredentialscreen'] == 'undefined') {
+                this.showScanQR = this.loginHelper.isFixedUrlSet();
+            } else {
+                this.showScanQR = !!CoreConfigConstants['displayqroncredentialscreen'];
+            }
+        } else {
+            this.showScanQR = false;
+        }
+
+        if (appProvider.isIOS()) {
+            // Make iOS auto-fill work. The field that isn't focused doesn't get updated, do it manually.
+            // Debounce it to prevent triggering this function too often when the user is typing.
+            this.valueChangeSubscription = this.credForm.valueChanges.debounceTime(1000).subscribe((changes) => {
+                if (!this.formElement || !this.formElement.nativeElement) {
+                    return;
+                }
+
+                const usernameInput = this.formElement.nativeElement.querySelector('input[name="username"]');
+                const passwordInput = this.formElement.nativeElement.querySelector('input[name="password"]');
+                const usernameValue = usernameInput && usernameInput.value;
+                const passwordValue = passwordInput && passwordInput.value;
+
+                if (typeof usernameValue != 'undefined' && usernameValue != changes.username) {
+                    this.credForm.get('username').setValue(usernameValue);
+                }
+                if (typeof passwordValue != 'undefined' && passwordValue != changes.password) {
+                    this.credForm.get('password').setValue(passwordValue);
+                }
+            });
+        }
     }
 
     /**
@@ -72,8 +120,9 @@ export class CoreLoginCredentialsPage {
      */
     ionViewDidLoad(): void {
         this.treatSiteConfig();
+        this.isFixedUrlSet = this.loginHelper.isFixedUrlSet();
 
-        if (this.loginHelper.isFixedUrlSet()) {
+        if (this.isFixedUrlSet) {
             // Fixed URL, we need to check if it uses browser SSO login.
             this.checkSite(this.siteUrl);
         } else {
@@ -83,9 +132,9 @@ export class CoreLoginCredentialsPage {
     }
 
     /**
-     * View left.
+     * View destroyed.
      */
-    ionViewDidLeave(): void {
+    ionViewWillUnload(): void {
         this.viewLeft = true;
         this.eventsProvider.trigger(CoreEventsProvider.LOGIN_SITE_UNCHECKED, { config: this.siteConfig }, this.siteId);
     }
@@ -94,8 +143,8 @@ export class CoreLoginCredentialsPage {
      * Check if a site uses local_mobile, requires SSO login, etc.
      * This should be used only if a fixed URL is set, otherwise this check is already performed in CoreLoginSitePage.
      *
-     * @param {string} siteUrl Site URL to check.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param siteUrl Site URL to check.
+     * @return Promise resolved when done.
      */
     protected checkSite(siteUrl: string): Promise<any> {
         this.pageLoaded = false;
@@ -140,19 +189,21 @@ export class CoreLoginCredentialsPage {
      */
     protected treatSiteConfig(): void {
         if (this.siteConfig) {
-            this.siteName = this.siteConfig.sitename;
-            this.logoUrl = this.siteConfig.logourl || this.siteConfig.compactlogourl;
+            this.siteName = CoreConfigConstants.sitename ? CoreConfigConstants.sitename : this.siteConfig.sitename;
+            this.logoUrl = this.loginHelper.getLogoUrl(this.siteConfig);
             this.authInstructions = this.siteConfig.authinstructions || this.translate.instant('core.login.loginsteps');
-            this.canSignup = this.siteConfig.registerauth == 'email' && !this.loginHelper.isEmailSignupDisabled(this.siteConfig);
-            this.identityProviders = this.loginHelper.getValidIdentityProviders(this.siteConfig);
+
+            const disabledFeatures = this.loginHelper.getDisabledFeatures(this.siteConfig);
+            this.identityProviders = this.loginHelper.getValidIdentityProviders(this.siteConfig, disabledFeatures);
+            this.canSignup = this.siteConfig.registerauth == 'email' &&
+                    !this.loginHelper.isEmailSignupDisabled(this.siteConfig, disabledFeatures);
+            this.showForgottenPassword = !this.loginHelper.isForgottenPasswordDisabled(this.siteConfig, disabledFeatures);
 
             if (!this.eventThrown && !this.viewLeft) {
                 this.eventThrown = true;
                 this.eventsProvider.trigger(CoreEventsProvider.LOGIN_SITE_CHECKED, { config: this.siteConfig });
             }
         } else {
-            this.siteName = null;
-            this.logoUrl = null;
             this.authInstructions = null;
             this.canSignup = false;
             this.identityProviders = [];
@@ -161,8 +212,15 @@ export class CoreLoginCredentialsPage {
 
     /**
      * Tries to authenticate the user.
+     *
+     * @param e Event.
      */
-    login(): void {
+    login(e?: Event): void {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
         this.appProvider.closeKeyboard();
 
         // Get input data.
@@ -210,25 +268,20 @@ export class CoreLoginCredentialsPage {
 
                 this.siteId = id;
 
-                if (this.urlToOpen) {
-                    // There's a content link to open.
-                    return this.contentLinksDelegate.getActionsFor(this.urlToOpen, undefined, username).then((actions) => {
-                        const action = this.contentLinksHelper.getFirstValidAction(actions);
-                        if (action && action.sites.length) {
-                            // Action should only have 1 site because we're filtering by username.
-                            action.action(action.sites[0]);
-                        } else {
-                            return this.loginHelper.goToSiteInitialPage();
-                        }
-                    });
-                } else {
-                    return this.loginHelper.goToSiteInitialPage();
-                }
+                return this.loginHelper.goToSiteInitialPage(undefined, undefined, undefined, undefined, this.urlToOpen);
             });
         }).catch((error) => {
-            this.loginHelper.treatUserTokenError(siteUrl, error);
+            this.loginHelper.treatUserTokenError(siteUrl, error, username, password);
+            if (error.loggedout) {
+                this.navCtrl.setRoot('CoreLoginSitesPage');
+            } else if (error.errorcode == 'forcepasswordchangenotice') {
+                // Reset password field.
+                this.credForm.controls.password.reset();
+            }
         }).finally(() => {
             modal.dismiss();
+
+            this.domUtils.triggerFormSubmittedEvent(this.formElement, true);
         });
     }
 
@@ -236,32 +289,13 @@ export class CoreLoginCredentialsPage {
      * Forgotten password button clicked.
      */
     forgottenPassword(): void {
-        if (this.siteConfig && this.siteConfig.forgottenpasswordurl) {
-            // URL set, open it.
-            this.utils.openInApp(this.siteConfig.forgottenpasswordurl);
-
-            return;
-        }
-
-        // Check if password reset can be done through the app.
-        const modal = this.domUtils.showModalLoading();
-        this.loginHelper.canRequestPasswordReset(this.siteUrl).then((canReset) => {
-            if (canReset) {
-                this.navCtrl.push('CoreLoginForgottenPasswordPage', {
-                    siteUrl: this.siteUrl, username: this.credForm.value.username
-                });
-            } else {
-                this.loginHelper.openForgottenPassword(this.siteUrl);
-            }
-        }).finally(() => {
-            modal.dismiss();
-        });
+        this.loginHelper.forgottenPasswordClicked(this.navCtrl, this.siteUrl, this.credForm.value.username, this.siteConfig);
     }
 
     /**
      * An OAuth button was clicked.
      *
-     * @param {any} provider The provider that was clicked.
+     * @param provider The provider that was clicked.
      */
     oauthClicked(provider: any): void {
         if (!this.loginHelper.openBrowserForOAuthLogin(this.siteUrl, provider, this.siteConfig.launchurl)) {
@@ -274,5 +308,63 @@ export class CoreLoginCredentialsPage {
      */
     signup(): void {
         this.navCtrl.push('CoreLoginEmailSignupPage', { siteUrl: this.siteUrl });
+    }
+
+    /**
+     * Show instructions and scan QR code.
+     */
+    showInstructionsAndScanQR(): void {
+        // Show some instructions first.
+        this.domUtils.showAlertWithOptions({
+            title: this.translate.instant('core.login.faqwhereisqrcode'),
+            message: this.translate.instant('core.login.faqwhereisqrcodeanswer',
+                {$image: CoreLoginHelperProvider.FAQ_QRCODE_IMAGE_HTML}),
+            buttons: [
+                {
+                    text: this.translate.instant('core.cancel'),
+                    role: 'cancel'
+                },
+                {
+                    text: this.translate.instant('core.next'),
+                    handler: (): void => {
+                        this.scanQR();
+                    }
+                },
+            ],
+        });
+    }
+
+    /**
+     * Scan a QR code and put its text in the URL input.
+     *
+     * @return Promise resolved when done.
+     */
+    async scanQR(): Promise<void> {
+        // Scan for a QR code.
+        const text = await CoreUtils.instance.scanQR();
+
+        if (text && CoreCustomURLSchemes.instance.isCustomURL(text)) {
+            try {
+                await CoreCustomURLSchemes.instance.handleCustomURL(text);
+            } catch (error) {
+                CoreCustomURLSchemes.instance.treatHandleCustomURLError(error);
+            }
+        } else if (text) {
+            // Not a custom URL scheme, check if it's a URL scheme to another app.
+            const scheme = CoreUrlUtils.instance.getUrlProtocol(text);
+
+            if (scheme && scheme != 'http' && scheme != 'https') {
+                this.domUtils.showErrorModal(this.translate.instant('core.errorurlschemeinvalidscheme', {$a: text}));
+            } else {
+                this.domUtils.showErrorModal('core.login.errorqrnoscheme', true);
+            }
+        }
+    }
+
+    /**
+     * Component destroyed.
+     */
+    ngOnDestroy(): void {
+        this.valueChangeSubscription && this.valueChangeSubscription.unsubscribe();
     }
 }

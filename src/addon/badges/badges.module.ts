@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,8 +17,10 @@ import { AddonBadgesProvider } from './providers/badges';
 import { AddonBadgesUserHandler } from './providers/user-handler';
 import { AddonBadgesMyBadgesLinkHandler } from './providers/mybadges-link-handler';
 import { AddonBadgesBadgeLinkHandler } from './providers/badge-link-handler';
+import { AddonBadgesPushClickHandler } from './providers/push-click-handler';
 import { CoreContentLinksDelegate } from '@core/contentlinks/providers/delegate';
 import { CoreUserDelegate } from '@core/user/providers/user-delegate';
+import { CorePushNotificationsDelegate } from '@core/pushnotifications/providers/delegate';
 
 // List of providers (without handlers).
 export const ADDON_BADGES_PROVIDERS: any[] = [
@@ -34,16 +36,19 @@ export const ADDON_BADGES_PROVIDERS: any[] = [
         AddonBadgesProvider,
         AddonBadgesUserHandler,
         AddonBadgesMyBadgesLinkHandler,
-        AddonBadgesBadgeLinkHandler
+        AddonBadgesBadgeLinkHandler,
+        AddonBadgesPushClickHandler
     ]
 })
 export class AddonBadgesModule {
     constructor(userDelegate: CoreUserDelegate, userHandler: AddonBadgesUserHandler,
         contentLinksDelegate: CoreContentLinksDelegate, myBadgesLinkHandler: AddonBadgesMyBadgesLinkHandler,
-        badgeLinkHandler: AddonBadgesBadgeLinkHandler) {
+        badgeLinkHandler: AddonBadgesBadgeLinkHandler,
+        pushNotificationsDelegate: CorePushNotificationsDelegate, pushClickHandler: AddonBadgesPushClickHandler) {
 
         userDelegate.registerHandler(userHandler);
         contentLinksDelegate.registerHandler(myBadgesLinkHandler);
         contentLinksDelegate.registerHandler(badgeLinkHandler);
+        pushNotificationsDelegate.registerClickHandler(pushClickHandler);
     }
 }

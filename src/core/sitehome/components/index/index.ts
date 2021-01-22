@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, Input, ViewChild } from '@angular/core';
 import { CoreSitesProvider } from '@providers/sites';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreCourseProvider } from '@core/course/providers/course';
 import { CoreCourseHelperProvider } from '@core/course/providers/helper';
 import { CoreCourseModulePrefetchDelegate } from '@core/course/providers/module-prefetch-delegate';
-import { CoreSiteHomeProvider } from '../../providers/sitehome';
+import { CoreBlockCourseBlocksComponent } from '@core/block/components/course-blocks/course-blocks';
+import { CoreSite } from '@classes/site';
 
 /**
  * Component that displays site home index.
@@ -28,19 +29,21 @@ import { CoreSiteHomeProvider } from '../../providers/sitehome';
     templateUrl: 'core-sitehome-index.html',
 })
 export class CoreSiteHomeIndexComponent implements OnInit {
-    dataLoaded: boolean;
+    @Input() downloadEnabled: boolean;
+    @ViewChild(CoreBlockCourseBlocksComponent) courseBlocksComponent: CoreBlockCourseBlocksComponent;
+
+    dataLoaded = false;
     section: any;
-    block: any;
     hasContent: boolean;
     items: any[] = [];
     siteHomeId: number;
+    currentSite: CoreSite;
 
-    protected sectionsLoaded: any[];
-
-    constructor(private domUtils: CoreDomUtilsProvider, private sitesProvider: CoreSitesProvider,
+    constructor(private domUtils: CoreDomUtilsProvider, sitesProvider: CoreSitesProvider,
             private courseProvider: CoreCourseProvider, private courseHelper: CoreCourseHelperProvider,
-            private prefetchDelegate: CoreCourseModulePrefetchDelegate, private siteHomeProvider: CoreSiteHomeProvider) {
-        this.siteHomeId = sitesProvider.getCurrentSite().getSiteHomeId();
+            private prefetchDelegate: CoreCourseModulePrefetchDelegate) {
+        this.currentSite = sitesProvider.getCurrentSite();
+        this.siteHomeId = this.currentSite.getSiteHomeId();
     }
 
     /**
@@ -55,28 +58,33 @@ export class CoreSiteHomeIndexComponent implements OnInit {
     /**
      * Refresh the data.
      *
-     * @param {any} refresher Refresher.
+     * @param refresher Refresher.
      */
     doRefresh(refresher: any): void {
-        const promises = [],
-            currentSite = this.sitesProvider.getCurrentSite();
+        const promises = [];
 
         promises.push(this.courseProvider.invalidateSections(this.siteHomeId));
-        promises.push(currentSite.invalidateConfig().then(() => {
+        promises.push(this.currentSite.invalidateConfig().then(() => {
             // Config invalidated, fetch it again.
-            return currentSite.getConfig().then((config) => {
-                currentSite.setConfig(config);
+            return this.currentSite.getConfig().then((config) => {
+                this.currentSite.setConfig(config);
             });
         }));
 
-        if (this.sectionsLoaded) {
+        if (this.section && this.section.modules) {
             // Invalidate modules prefetch data.
-            const modules = this.courseProvider.getSectionsModules(this.sectionsLoaded);
-            promises.push(this.prefetchDelegate.invalidateModules(modules, this.siteHomeId));
+            promises.push(this.prefetchDelegate.invalidateModules(this.section.modules, this.siteHomeId));
         }
 
+        promises.push(this.courseBlocksComponent.invalidateBlocks());
+
         Promise.all(promises).finally(() => {
-            this.loadContent().finally(() => {
+            const p2 = [];
+
+            p2.push(this.loadContent());
+            p2.push(this.courseBlocksComponent.loadContent());
+
+            return Promise.all(p2).finally(() => {
                 refresher.complete();
             });
         });
@@ -85,13 +93,12 @@ export class CoreSiteHomeIndexComponent implements OnInit {
     /**
      * Convenience function to fetch the data.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected loadContent(): Promise<any> {
-        let hasNewsItem = false;
         this.hasContent = false;
 
-        const config = this.sitesProvider.getCurrentSite().getStoredConfig() || { numsections: 1 };
+        const config = this.currentSite.getStoredConfig() || { numsections: 1 };
 
         if (config.frontpageloggedin) {
             // Items with index 1 and 3 were removed on 2.5 and not being supported in the app.
@@ -116,50 +123,26 @@ export class CoreSiteHomeIndexComponent implements OnInit {
                     return;
                 }
 
-                if (item == 'news') {
-                    hasNewsItem = true;
-                }
-
                 this.hasContent = true;
                 this.items.push(item);
             });
         }
 
         return this.courseProvider.getSections(this.siteHomeId, false, true).then((sections) => {
-            this.sectionsLoaded = Array.from(sections);
 
             // Check "Include a topic section" setting from numsections.
-            this.section = config.numsections && sections.length > 0 ? sections.pop() : false;
+            this.section = config.numsections ? sections.find((section) => section.section == 1) : false;
             if (this.section) {
                 this.section.hasContent = this.courseHelper.sectionHasContent(this.section);
+                this.hasContent = this.courseHelper.addHandlerDataForModules([this.section], this.siteHomeId, undefined,
+                        undefined, true) || this.hasContent;
             }
-
-            this.block = sections.length > 0 ? sections.pop() : false;
-            if (this.block) {
-                this.block.hasContent = this.courseHelper.sectionHasContent(this.block);
-            }
-
-            this.hasContent = this.courseHelper.addHandlerDataForModules(this.sectionsLoaded, this.siteHomeId) || this.hasContent;
 
             // Add log in Moodle.
-            this.courseProvider.logView(this.siteHomeId);
-
-            if (hasNewsItem && this.block && this.block.modules) {
-                // Remove forum activity (news one only) to prevent duplicates.
-                return this.siteHomeProvider.getNewsForum(this.siteHomeId).then((forum) => {
-                    // Search the module that belongs to site news.
-                    for (let i = 0; i < this.block.modules.length; i++) {
-                        const module = this.block.modules[i];
-
-                        if (module.modname == 'forum' && module.instance == forum.id) {
-                            this.block.modules.splice(i, 1);
-                            break;
-                        }
-                    }
-                }).catch(() => {
-                    // Ignore errors.
-                });
-            }
+            this.courseProvider.logView(this.siteHomeId, undefined, undefined,
+                    this.currentSite && this.currentSite.getInfo().sitename).catch(() => {
+                // Ignore errors.
+            });
         }).catch((error) => {
             this.domUtils.showErrorModalDefault(error, 'core.course.couldnotloadsectioncontent', true);
         });

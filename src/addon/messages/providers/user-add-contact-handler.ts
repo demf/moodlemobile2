@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import { TranslateService } from '@ngx-translate/core';
 export class AddonMessagesAddContactUserHandler implements CoreUserProfileHandler, OnDestroy {
     /**
      * Update handler information event.
-     * @type {string}
      */
     static UPDATED_EVENT = 'AddonMessagesAddContactUserHandler_updated_event';
 
@@ -51,7 +50,7 @@ export class AddonMessagesAddContactUserHandler implements CoreUserProfileHandle
     /**
      * Check if handler is enabled.
      *
-     * @return {Promise<boolean>} Promise resolved with true if enabled, rejected or resolved with false otherwise.
+     * @return Promise resolved with true if enabled, rejected or resolved with false otherwise.
      */
     isEnabled(): Promise<boolean> {
         return this.messagesProvider.isPluginEnabled();
@@ -60,11 +59,11 @@ export class AddonMessagesAddContactUserHandler implements CoreUserProfileHandle
     /**
      * Check if handler is enabled for this user in this context.
      *
-     * @param {any} user          User to check.
-     * @param {number} courseId   Course ID.
-     * @param  {any} [navOptions] Course navigation options for current user. See CoreCoursesProvider.getUserNavigationOptions.
-     * @param  {any} [admOptions] Course admin options for current user. See CoreCoursesProvider.getUserAdministrationOptions.
-     * @return  {boolean|Promise<boolean>}   Promise resolved with true if enabled, resolved with false otherwise.
+     * @param user User to check.
+     * @param courseId Course ID.
+     * @param navOptions Course navigation options for current user. See CoreCoursesProvider.getUserNavigationOptions.
+     * @param admOptions Course admin options for current user. See CoreCoursesProvider.getUserAdministrationOptions.
+     * @return Promise resolved with true if enabled, resolved with false otherwise.
      */
     isEnabledForUser(user: any, courseId: number, navOptions?: any, admOptions?: any): boolean | Promise<boolean> {
         return user.id != this.sitesProvider.getCurrentSiteUserId();
@@ -73,7 +72,7 @@ export class AddonMessagesAddContactUserHandler implements CoreUserProfileHandle
     /**
      * Returns the data needed to render the handler.
      *
-     * @return {CoreUserProfileHandlerData} Data needed to render the handler.
+     * @return Data needed to render the handler.
      */
     getDisplayData(user: any, courseId: number): CoreUserProfileHandlerData {
         this.checkButton(user.id);
@@ -95,14 +94,14 @@ export class AddonMessagesAddContactUserHandler implements CoreUserProfileHandle
 
                 this.messagesProvider.isContact(user.id).then((isContact) => {
                     if (isContact) {
-                        const template = this.translate.instant('addon.messages.removecontactconfirm'),
-                            title = this.translate.instant('addon.messages.removecontact');
+                        const message = this.translate.instant('addon.messages.removecontactconfirm', {$a: user.fullname});
+                        const okText = this.translate.instant('core.remove');
 
-                        return this.domUtils.showConfirm(template, title, title).then(() => {
+                        return this.domUtils.showConfirm(message, undefined, okText).then(() => {
                             return this.messagesProvider.removeContact(user.id);
                         });
                     } else {
-                        return this.messagesProvider.addContact(user.id);
+                        return this.addContact(user);
                     }
                 }).catch((error) => {
                     this.domUtils.showErrorModalDefault(error, 'core.error', true);
@@ -119,16 +118,18 @@ export class AddonMessagesAddContactUserHandler implements CoreUserProfileHandle
 
     /**
      * Update Button with avalaible data.
-     * @param {number} userId User Id to update.
-     * @return {Promise<void>}   Promise resolved when done.
+     * @param userId User Id to update.
+     * @return Promise resolved when done.
      */
     protected checkButton(userId: number): Promise<void> {
         this.updateButton(userId, {spinner: true});
 
+        const groupMessagingEnabled = this.messagesProvider.isGroupMessagingEnabled();
+
         return this.messagesProvider.isContact(userId).then((isContact) => {
             if (isContact) {
                 this.updateButton(userId, {
-                    title: 'addon.messages.removecontact',
+                    title: groupMessagingEnabled ? 'addon.messages.removefromyourcontacts' : 'addon.messages.removecontact',
                     class: 'addon-messages-removecontact-handler',
                     icon: 'remove',
                     hidden: false,
@@ -136,7 +137,7 @@ export class AddonMessagesAddContactUserHandler implements CoreUserProfileHandle
                 });
             } else {
                 this.updateButton(userId, {
-                    title: 'addon.messages.addcontact',
+                    title: groupMessagingEnabled ? 'addon.messages.addtoyourcontacts' : 'addon.messages.addcontact',
                     class: 'addon-messages-addcontact-handler',
                     icon: 'add',
                     hidden: false,
@@ -152,12 +153,48 @@ export class AddonMessagesAddContactUserHandler implements CoreUserProfileHandle
     /**
      * Triggers the event to update the handler information.
      *
-     * @param {number} userId The user ID the handler belongs to.
-     * @param {any} data Data that should be updated.
+     * @param userId The user ID the handler belongs to.
+     * @param data Data that should be updated.
      */
     protected updateButton(userId: number, data: any): void {
         // This fails for some reason, let's just hide the button.
         this.eventsProvider.trigger(CoreUserDelegate.UPDATE_HANDLER_EVENT, { handler: this.name, data: data, userId: userId });
+    }
+
+    /**
+     * Add a contact or send a contact request if group messaging is enabled.
+     *
+     * @param user User to add as contact.
+     * @return Promise resolved when done.
+     */
+    protected addContact(user: any): Promise<any> {
+        if (!this.messagesProvider.isGroupMessagingEnabled()) {
+            return this.messagesProvider.addContact(user.id);
+        }
+
+        return this.messagesProvider.getMemberInfo(user.id).then((member) => {
+            const currentUserId = this.sitesProvider.getCurrentSiteUserId();
+            const requestSent = member.contactrequests.some((request) => {
+                return request.userid == currentUserId && request.requesteduserid == user.id;
+            });
+
+            if (requestSent) {
+                const message = this.translate.instant('addon.messages.yourcontactrequestpending', {$a: user.fullname});
+
+               return this.domUtils.showAlert(null, message);
+            }
+
+            const message = this.translate.instant('addon.messages.addcontactconfirm', {$a: user.fullname});
+            const okText = this.translate.instant('core.add');
+
+            return this.domUtils.showConfirm(message, undefined, okText).then(() => {
+                return this.messagesProvider.createContactRequest(user.id);
+            }).then(() => {
+                const message = this.translate.instant('addon.messages.contactrequestsent');
+
+                return this.domUtils.showAlert(null, message);
+            });
+        });
     }
 
     /**

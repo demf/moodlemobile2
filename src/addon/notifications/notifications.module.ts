@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,24 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { NgModule } from '@angular/core';
+import { NgModule, NgZone } from '@angular/core';
 import { AddonNotificationsProvider } from './providers/notifications';
+import { AddonNotificationsHelperProvider } from './providers/helper';
 import { AddonNotificationsMainMenuHandler } from './providers/mainmenu-handler';
 import { AddonNotificationsSettingsHandler } from './providers/settings-handler';
 import { AddonNotificationsCronHandler } from './providers/cron-handler';
+import { AddonNotificationsPushClickHandler } from './providers/push-click-handler';
 import { CoreAppProvider } from '@providers/app';
-import { CoreContentLinksHelperProvider } from '@core/contentlinks/providers/helper';
+import { CoreInitDelegate } from '@providers/init';
 import { CoreMainMenuDelegate } from '@core/mainmenu/providers/delegate';
 import { CoreSettingsDelegate } from '@core/settings/providers/delegate';
 import { CoreCronDelegate } from '@providers/cron';
 import { CoreLocalNotificationsProvider } from '@providers/local-notifications';
-import { CoreSitesProvider } from '@providers/sites';
-import { CoreUtilsProvider } from '@providers/utils/utils';
-import { AddonPushNotificationsDelegate } from '@addon/pushnotifications/providers/delegate';
+import { CorePushNotificationsDelegate } from '@core/pushnotifications/providers/delegate';
 
 // List of providers (without handlers).
 export const ADDON_NOTIFICATIONS_PROVIDERS: any[] = [
-    AddonNotificationsProvider
+    AddonNotificationsProvider,
+    AddonNotificationsHelperProvider
 ];
 
 @NgModule({
@@ -39,47 +40,33 @@ export const ADDON_NOTIFICATIONS_PROVIDERS: any[] = [
     ],
     providers: [
         AddonNotificationsProvider,
+        AddonNotificationsHelperProvider,
         AddonNotificationsMainMenuHandler,
         AddonNotificationsSettingsHandler,
         AddonNotificationsCronHandler,
+        AddonNotificationsPushClickHandler
     ]
 })
 export class AddonNotificationsModule {
     constructor(mainMenuDelegate: CoreMainMenuDelegate, mainMenuHandler: AddonNotificationsMainMenuHandler,
             settingsDelegate: CoreSettingsDelegate, settingsHandler: AddonNotificationsSettingsHandler,
-            cronDelegate: CoreCronDelegate, cronHandler: AddonNotificationsCronHandler,
-            appProvider: CoreAppProvider, utils: CoreUtilsProvider, sitesProvider: CoreSitesProvider,
-            notificationsProvider: AddonNotificationsProvider, localNotifications: CoreLocalNotificationsProvider,
-            linkHelper: CoreContentLinksHelperProvider, pushNotificationsDelegate: AddonPushNotificationsDelegate) {
+            cronDelegate: CoreCronDelegate, cronHandler: AddonNotificationsCronHandler, zone: NgZone,
+            appProvider: CoreAppProvider, localNotifications: CoreLocalNotificationsProvider,
+            initDelegate: CoreInitDelegate, pushNotificationsDelegate: CorePushNotificationsDelegate,
+            pushClickHandler: AddonNotificationsPushClickHandler) {
+
         mainMenuDelegate.registerHandler(mainMenuHandler);
         settingsDelegate.registerHandler(settingsHandler);
         cronDelegate.register(cronHandler);
-
-        const notificationClicked = (notification: any): void => {
-            sitesProvider.isFeatureDisabled('CoreMainMenuDelegate_AddonNotifications', notification.site).then((disabled) => {
-                if (disabled) {
-                    // Notifications are disabled, stop.
-                    return;
-                }
-
-                notificationsProvider.invalidateNotificationsList().finally(() => {
-                    linkHelper.goInSite(undefined, 'AddonNotificationsListPage', undefined, notification.site);
-                });
-            });
-        };
+        pushNotificationsDelegate.registerClickHandler(pushClickHandler);
 
         if (appProvider.isDesktop()) {
             // Listen for clicks in simulated push notifications.
-            localNotifications.registerClick(AddonNotificationsProvider.PUSH_SIMULATION_COMPONENT, notificationClicked);
+            localNotifications.registerClick(AddonNotificationsProvider.PUSH_SIMULATION_COMPONENT, (notification) => {
+                initDelegate.ready().then(() => {
+                    pushNotificationsDelegate.clicked(notification);
+                });
+            });
         }
-
-        // Register push notification clicks.
-        pushNotificationsDelegate.on('click').subscribe((notification) => {
-            if (utils.isTrueOrOne(notification.notif)) {
-                notificationClicked(notification);
-
-                return true;
-            }
-        });
     }
 }

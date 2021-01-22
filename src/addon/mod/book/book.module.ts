@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,10 +17,13 @@ import { AddonModBookComponentsModule } from './components/components.module';
 import { AddonModBookProvider } from './providers/book';
 import { AddonModBookModuleHandler } from './providers/module-handler';
 import { AddonModBookLinkHandler } from './providers/link-handler';
+import { AddonModBookListLinkHandler } from './providers/list-link-handler';
 import { AddonModBookPrefetchHandler } from './providers/prefetch-handler';
 import { CoreCourseModuleDelegate } from '@core/course/providers/module-delegate';
 import { CoreContentLinksDelegate } from '@core/contentlinks/providers/delegate';
 import { CoreCourseModulePrefetchDelegate } from '@core/course/providers/module-prefetch-delegate';
+import { CoreTagAreaDelegate } from '@core/tag/providers/area-delegate';
+import { AddonModBookTagAreaHandler } from './providers/tag-area-handler';
 
 // List of providers (without handlers).
 export const ADDON_MOD_BOOK_PROVIDERS: any[] = [
@@ -37,15 +40,22 @@ export const ADDON_MOD_BOOK_PROVIDERS: any[] = [
         AddonModBookProvider,
         AddonModBookModuleHandler,
         AddonModBookLinkHandler,
-        AddonModBookPrefetchHandler
+        AddonModBookListLinkHandler,
+        AddonModBookPrefetchHandler,
+        AddonModBookTagAreaHandler
     ]
 })
 export class AddonModBookModule {
     constructor(moduleDelegate: CoreCourseModuleDelegate, moduleHandler: AddonModBookModuleHandler,
             contentLinksDelegate: CoreContentLinksDelegate, linkHandler: AddonModBookLinkHandler,
-            prefetchDelegate: CoreCourseModulePrefetchDelegate, prefetchHandler: AddonModBookPrefetchHandler) {
+            prefetchDelegate: CoreCourseModulePrefetchDelegate, prefetchHandler: AddonModBookPrefetchHandler,
+            listLinkHandler: AddonModBookListLinkHandler, tagAreaDelegate: CoreTagAreaDelegate,
+            tagAreaHandler: AddonModBookTagAreaHandler) {
+
         moduleDelegate.registerHandler(moduleHandler);
         contentLinksDelegate.registerHandler(linkHandler);
+        contentLinksDelegate.registerHandler(listLinkHandler);
         prefetchDelegate.registerHandler(prefetchHandler);
+        tagAreaDelegate.registerHandler(tagAreaHandler);
     }
 }

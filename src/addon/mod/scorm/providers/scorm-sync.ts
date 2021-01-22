@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,12 +17,15 @@ import { TranslateService } from '@ngx-translate/core';
 import { CoreAppProvider } from '@providers/app';
 import { CoreEventsProvider } from '@providers/events';
 import { CoreLoggerProvider } from '@providers/logger';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSitesReadingStrategy } from '@providers/sites';
 import { CoreSyncProvider } from '@providers/sync';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
+import { CoreTimeUtilsProvider } from '@providers/utils/time';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreCourseProvider } from '@core/course/providers/course';
-import { CoreSyncBaseProvider } from '@classes/base-sync';
+import { CoreCourseLogHelperProvider } from '@core/course/providers/log-helper';
+import { CoreCourseModulePrefetchDelegate } from '@core/course/providers/module-prefetch-delegate';
+import { CoreCourseActivitySyncBaseProvider } from '@core/course/classes/activity-sync';
 import { AddonModScormProvider, AddonModScormAttemptCountResult } from './scorm';
 import { AddonModScormOfflineProvider } from './scorm-offline';
 import { AddonModScormPrefetchHandler } from './prefetch-handler';
@@ -33,19 +36,16 @@ import { AddonModScormPrefetchHandler } from './prefetch-handler';
 export interface AddonModScormSyncResult {
     /**
      * List of warnings.
-     * @type {string[]}
      */
     warnings: string[];
 
     /**
      * Whether an attempt was finished in the site due to the sync,
-     * @type {boolean}
      */
     attemptFinished: boolean;
 
     /**
      * Whether some data was sent to the site.
-     * @type {boolean}
      */
     updated: boolean;
 }
@@ -54,7 +54,7 @@ export interface AddonModScormSyncResult {
  * Service to sync SCORMs.
  */
 @Injectable()
-export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
+export class AddonModScormSyncProvider extends CoreCourseActivitySyncBaseProvider {
 
     static AUTO_SYNCED = 'addon_mod_scorm_autom_synced';
 
@@ -62,11 +62,14 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
 
     constructor(loggerProvider: CoreLoggerProvider, sitesProvider: CoreSitesProvider, appProvider: CoreAppProvider,
             syncProvider: CoreSyncProvider, textUtils: CoreTextUtilsProvider, translate: TranslateService,
-            courseProvider: CoreCourseProvider, private eventsProvider: CoreEventsProvider,
+            private eventsProvider: CoreEventsProvider, timeUtils: CoreTimeUtilsProvider,
             private scormProvider: AddonModScormProvider, private scormOfflineProvider: AddonModScormOfflineProvider,
-            private prefetchHandler: AddonModScormPrefetchHandler, private utils: CoreUtilsProvider) {
+            prefetchHandler: AddonModScormPrefetchHandler, private utils: CoreUtilsProvider,
+            prefetchDelegate: CoreCourseModulePrefetchDelegate, private courseProvider: CoreCourseProvider,
+            private logHelper: CoreCourseLogHelperProvider) {
 
-        super('AddonModScormSyncProvider', loggerProvider, sitesProvider, appProvider, syncProvider, textUtils, translate);
+        super('AddonModScormSyncProvider', loggerProvider, sitesProvider, appProvider, syncProvider, textUtils, translate,
+                timeUtils, prefetchDelegate, prefetchHandler);
 
         this.componentTranslate = courseProvider.translateModuleName('scorm');
     }
@@ -75,16 +78,16 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
      * Add an offline attempt to the right of the new attempts array if possible.
      * If the attempt cannot be created as a new attempt then it will be deleted.
      *
-     * @param {number} scormId SCORM ID.
-     * @param {number} attempt The offline attempt to treat.
-     * @param {number} lastOffline Last offline attempt number.
-     * @param {number[]} newAttemptsSameOrder Attempts that'll be created as new attempts but keeping the current order.
-     * @param {any} newAttemptsAtEnd Object with attempts that'll be created at the end of the list of attempts (should be max 1).
-     * @param {number} lastOfflineCreated Time when the last offline attempt was created.
-     * @param {boolean} lastOfflineIncomplete Whether the last offline attempt is incomplete.
-     * @param {string[]} warnings Array where to add the warnings.
-     * @param {string} siteId Site ID.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param scormId SCORM ID.
+     * @param attempt The offline attempt to treat.
+     * @param lastOffline Last offline attempt number.
+     * @param newAttemptsSameOrder Attempts that'll be created as new attempts but keeping the current order.
+     * @param newAttemptsAtEnd Object with attempts that'll be created at the end of the list of attempts (should be max 1).
+     * @param lastOfflineCreated Time when the last offline attempt was created.
+     * @param lastOfflineIncomplete Whether the last offline attempt is incomplete.
+     * @param warnings Array where to add the warnings.
+     * @param siteId Site ID.
+     * @return Promise resolved when done.
      */
     protected addToNewOrDelete(scormId: number, attempt: number, lastOffline: number, newAttemptsSameOrder: number[],
             newAttemptsAtEnd: any, lastOfflineCreated: number, lastOfflineIncomplete: boolean, warnings: string[],
@@ -123,17 +126,23 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Check if can retry an attempt synchronization.
      *
-     * @param {number} scormId SCORM ID.
-     * @param {number} attempt Attempt number.
-     * @param {number} lastOnline Last online attempt number.
-     * @param {string} siteId Site ID.
-     * @return {Promise<any>} Promise resolved if can retry the synchronization, rejected otherwise.
+     * @param scormId SCORM ID.
+     * @param attempt Attempt number.
+     * @param lastOnline Last online attempt number.
+     * @param cmId Module ID.
+     * @param siteId Site ID.
+     * @return Promise resolved if can retry the synchronization, rejected otherwise.
      */
-    protected canRetrySync(scormId: number, attempt: number, lastOnline: number, siteId: string): Promise<any> {
+    protected canRetrySync(scormId: number, attempt: number, lastOnline: number, cmId: number, siteId: string): Promise<any> {
+
         // If it's the last attempt we don't need to ignore cache because we already did it.
         const refresh = lastOnline != attempt;
 
-        return this.scormProvider.getScormUserData(scormId, attempt, undefined, false, refresh, siteId).then((siteData) => {
+        return this.scormProvider.getScormUserData(scormId, attempt, {
+            cmId,
+            readingStrategy: refresh ? CoreSitesReadingStrategy.OnlyNetwork : undefined,
+            siteId,
+        }).then((siteData) => {
             // Get synchronization snapshot (if sync fails it should store a snapshot).
             return this.scormOfflineProvider.getAttemptSnapshot(scormId, attempt, siteId).then((snapshot) => {
                 if (!snapshot || !Object.keys(snapshot).length || !this.snapshotEquals(snapshot, siteData)) {
@@ -147,11 +156,11 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Create new attempts at the end of the offline attempts list.
      *
-     * @param {number} scormId SCORM ID.
-     * @param {any} newAttempts Object with the attempts to create. The keys are the timecreated, the values are the attempt number.
-     * @param {number} lastOffline Number of last offline attempt.
-     * @param {string} siteId Site ID.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param scormId SCORM ID.
+     * @param newAttempts Object with the attempts to create. The keys are the timecreated, the values are the attempt number.
+     * @param lastOffline Number of last offline attempt.
+     * @param siteId Site ID.
+     * @return Promise resolved when done.
      */
     protected createNewAttemptsAtEnd(scormId: number, newAttempts: any, lastOffline: number, siteId: string): Promise<any> {
         const times = Object.keys(newAttempts).sort(), // Sort in ASC order.
@@ -173,14 +182,14 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Finish a sync process: remove offline data if needed, prefetch SCORM data, set sync time and return the result.
      *
-     * @param {string} siteId Site ID.
-     * @param {any} scorm SCORM.
-     * @param {string[]} warnings List of warnings generated by the sync.
-     * @param {number} [lastOnline] Last online attempt number before the sync.
-     * @param {boolean} [lastOnlineWasFinished] Whether the last online attempt was finished before the sync.
-     * @param {AddonModScormAttemptCountResult} [initialCount] Attempt count before the sync.
-     * @param {boolean} [updated] Whether some data was sent to the site.
-     * @return {Promise<AddonModScormSyncResult>} Promise resolved on success.
+     * @param siteId Site ID.
+     * @param scorm SCORM.
+     * @param warnings List of warnings generated by the sync.
+     * @param lastOnline Last online attempt number before the sync.
+     * @param lastOnlineWasFinished Whether the last online attempt was finished before the sync.
+     * @param initialCount Attempt count before the sync.
+     * @param updated Whether some data was sent to the site.
+     * @return Promise resolved on success.
      */
     protected finishSync(siteId: string, scorm: any, warnings: string[], lastOnline?: number, lastOnlineWasFinished?: boolean,
             initialCount?: AddonModScormAttemptCountResult, updated?: boolean): Promise<AddonModScormSyncResult> {
@@ -188,11 +197,11 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
         let promise;
 
         if (updated) {
-            // Update the WS data.
-            promise = this.scormProvider.invalidateAllScormData(scorm.id, siteId).catch(() => {
+            // Update downloaded data.
+            promise = this.courseProvider.getModuleBasicInfoByInstance(scorm.id, 'scorm', siteId).then((module) => {
+                return this.prefetchAfterUpdate(module, scorm.course, undefined, siteId);
+            }).catch(() => {
                 // Ignore errors.
-            }).then(() => {
-                return this.prefetchHandler.fetchWSData(scorm, siteId);
             });
         } else {
             promise = Promise.resolve();
@@ -206,12 +215,16 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
             // Check if an attempt was finished in Moodle.
             if (initialCount) {
                 // Get attempt count again to check if an attempt was finished.
-                return this.scormProvider.getAttemptCount(scorm.id, undefined, false, siteId).then((attemptsData) => {
+                return this.scormProvider.getAttemptCount(scorm.id, {cmId: scorm.coursemodule, siteId}).then((attemptsData) => {
                     if (attemptsData.online.length > initialCount.online.length) {
                         return true;
                     } else if (!lastOnlineWasFinished && lastOnline > 0) {
                         // Last online attempt wasn't finished, let's check if it is now.
-                        return this.scormProvider.isAttemptIncomplete(scorm.id, lastOnline, false, true, siteId).then((inc) => {
+                        return this.scormProvider.isAttemptIncomplete(scorm.id, lastOnline, {
+                            cmId: scorm.coursemodule,
+                            readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+                            siteId,
+                        }).then((inc) => {
                             return !inc;
                         });
                     }
@@ -233,16 +246,21 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Get the creation time and the status (complete/incomplete) of an offline attempt.
      *
-     * @param {number} scormId SCORM ID.
-     * @param {number} attempt Attempt number.
-     * @param {string} siteId Site ID.
-     * @return {Promise<{incomplete: boolean, timecreated: number}>} Promise resolved with the data.
+     * @param scormId SCORM ID.
+     * @param attempt Attempt number.
+     * @param cmId Module ID.
+     * @param siteId Site ID.
+     * @return Promise resolved with the data.
      */
-    protected getOfflineAttemptData(scormId: number, attempt: number, siteId: string)
+    protected getOfflineAttemptData(scormId: number, attempt: number, cmId: number, siteId: string)
             : Promise<{incomplete: boolean, timecreated: number}> {
 
         // Check if last offline attempt is incomplete.
-        return this.scormProvider.isAttemptIncomplete(scormId, attempt, true, false, siteId).then((incomplete) => {
+        return this.scormProvider.isAttemptIncomplete(scormId, attempt, {
+            offline: true,
+            cmId,
+            siteId,
+        }).then((incomplete) => {
             return this.scormOfflineProvider.getAttemptCreationTime(scormId, attempt, siteId).then((timecreated) => {
                 return {
                     incomplete: incomplete,
@@ -258,13 +276,13 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
      * Example: We have offline attempts 1, 2 and 3. #1 and #2 have collisions. #1 can be synced, but #2 needs
      * to be a new attempt. #3 will now be #4, and #2 will now be #3.
      *
-     * @param {number} scormId SCORM ID.
-     * @param {number[]} newAttempts Attempts that need to be converted into new attempts.
-     * @param {number} lastOnline Last online attempt.
-     * @param {number} lastCollision Last attempt with collision (exists in online and offline).
-     * @param {number[]} offlineAttempts Numbers of offline attempts.
-     * @param {string} siteId Site ID.
-     * @return {Promise<any>} Promise resolved when attempts have been moved.
+     * @param scormId SCORM ID.
+     * @param newAttempts Attempts that need to be converted into new attempts.
+     * @param lastOnline Last online attempt.
+     * @param lastCollision Last attempt with collision (exists in online and offline).
+     * @param offlineAttempts Numbers of offline attempts.
+     * @param siteId Site ID.
+     * @return Promise resolved when attempts have been moved.
      */
     protected moveNewAttempts(scormId: any, newAttempts: number[], lastOnline: number, lastCollision: number,
             offlineAttempts: number[], siteId: string): Promise<any> {
@@ -358,19 +376,24 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Save a snapshot from a synchronization.
      *
-     * @param {number} scormId SCORM ID.
-     * @param {number} attempt Attemot number.
-     * @param {string} siteId  Site ID.
-     * @return {Promise<any>} Promise resolved when the snapshot is stored.
+     * @param scormId SCORM ID.
+     * @param attempt Attemot number.
+     * @param cmId Module ID.
+     * @param siteId Site ID.
+     * @return Promise resolved when the snapshot is stored.
      */
-    protected saveSyncSnapshot(scormId: number, attempt: number, siteId: string): Promise<any> {
+    protected saveSyncSnapshot(scormId: number, attempt: number, cmId: number, siteId: string): Promise<any> {
         // Try to get current state from the site.
-        return this.scormProvider.getScormUserData(scormId, attempt, undefined, false, true, siteId).then((data) => {
+        return this.scormProvider.getScormUserData(scormId, attempt, {
+            cmId,
+            readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+            siteId,
+        }).then((data) => {
             return this.scormOfflineProvider.setAttemptSnapshot(scormId, attempt, data, siteId);
         }, () => {
             // Error getting user data from the site. We'll have to build it ourselves.
             // Let's try to get cached data about the attempt.
-            return this.scormProvider.getScormUserData(scormId, attempt, undefined, false, false, siteId).catch(() => {
+            return this.scormProvider.getScormUserData(scormId, attempt, {cmId, siteId}).catch(() => {
                 // No cached data.
                 return {};
             }).then((data) => {
@@ -398,9 +421,9 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
      * It only compares elements with dot notation. This means that, if some SCO has been added to Moodle web
      * but the user hasn't generated data for it, then the snapshot will be detected as equal.
      *
-     * @param {any} snapshot Attempt's snapshot.
-     * @param {any} userData Data retrieved from the site.
-     * @return {boolean} True if snapshot is equal to the user data, false otherwise.
+     * @param snapshot Attempt's snapshot.
+     * @param userData Data retrieved from the site.
+     * @return True if snapshot is equal to the user data, false otherwise.
      */
     protected snapshotEquals(snapshot: any, userData: any): boolean {
         // Check that snapshot contains the data from the site.
@@ -437,20 +460,22 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Try to synchronize all the SCORMs in a certain site or in all sites.
      *
-     * @param {string} [siteId] Site ID to sync. If not defined, sync all sites.
-     * @return {Promise<any>} Promise resolved if sync is successful, rejected if sync fails.
+     * @param siteId Site ID to sync. If not defined, sync all sites.
+     * @param force Wether to force sync not depending on last execution.
+     * @return Promise resolved if sync is successful, rejected if sync fails.
      */
-    syncAllScorms(siteId?: string): Promise<any> {
-        return this.syncOnSites('all SCORMs', this.syncAllScormsFunc.bind(this), [], siteId);
+    syncAllScorms(siteId?: string, force?: boolean): Promise<any> {
+        return this.syncOnSites('all SCORMs', this.syncAllScormsFunc.bind(this), [force], siteId);
     }
 
     /**
      * Sync all SCORMs on a site.
      *
-     * @param {string} [siteId] Site ID to sync. If not defined, sync all sites.
-     * @param {Promise<any>} Promise resolved if sync is successful, rejected if sync fails.
+     * @param siteId Site ID to sync.
+     * @param force Wether to force sync not depending on last execution.
+     * @param Promise resolved if sync is successful, rejected if sync fails.
      */
-    protected syncAllScormsFunc(siteId?: string): Promise<any> {
+    protected syncAllScormsFunc(siteId: string, force?: boolean): Promise<any> {
 
         // Get all offline attempts.
         return this.scormOfflineProvider.getAllAttempts(siteId).then((attempts) => {
@@ -474,8 +499,10 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
             scorms.forEach((scorm) => {
                 if (!this.syncProvider.isBlocked(AddonModScormProvider.COMPONENT, scorm.id, siteId)) {
 
-                    promises.push(this.scormProvider.getScormById(scorm.courseId, scorm.id, '', false, siteId).then((scorm) => {
-                        return this.syncScormIfNeeded(scorm, siteId).then((data) => {
+                    promises.push(this.scormProvider.getScormById(scorm.courseId, scorm.id, {siteId}).then((scorm) => {
+                        const promise = force ? this.syncScorm(scorm, siteId) : this.syncScormIfNeeded(scorm, siteId);
+
+                        return promise.then((data) => {
                             if (typeof data != 'undefined') {
                                 // We tried to sync. Send event.
                                 this.eventsProvider.trigger(AddonModScormSyncProvider.AUTO_SYNCED, {
@@ -497,12 +524,13 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Send data from a SCORM offline attempt to the site.
      *
-     * @param {number} scormId SCORM ID.
-     * @param {number} attempt Attempt number.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>} Promise resolved when the attempt is successfully synced.
+     * @param scormId SCORM ID.
+     * @param attempt Attempt number.
+     * @param cmId Module ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the attempt is successfully synced.
      */
-    protected syncAttempt(scormId: number, attempt: number, siteId?: string): Promise<any> {
+    protected syncAttempt(scormId: number, attempt: number, cmId: number, siteId?: string): Promise<any> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
 
         this.logger.debug('Try to sync attempt ' + attempt + ' in SCORM ' + scormId + ' and site ' + siteId);
@@ -558,7 +586,7 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
                     this.logger.error('Error synchronizing some SCOs for attempt ' + attempt + ' in SCORM ' +
                             scormId + '. Saving snapshot.');
 
-                    return this.saveSyncSnapshot(scormId, attempt, siteId).then(() => {
+                    return this.saveSyncSnapshot(scormId, attempt, cmId, siteId).then(() => {
                         return Promise.reject(error);
                     });
                 } else {
@@ -573,9 +601,9 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Sync a SCORM only if a certain time has passed since the last time.
      *
-     * @param {any} scorm SCORM.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>} Promise resolved when the SCORM is synced or if it doesn't need to be synced.
+     * @param scorm SCORM.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the SCORM is synced or if it doesn't need to be synced.
      */
     syncScormIfNeeded(scorm: any, siteId?: string): Promise<any> {
         return this.isSyncNeeded(scorm.id, siteId).then((needed) => {
@@ -590,9 +618,9 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
      * The promise returned will be resolved with an array with warnings if the synchronization is successful. A successful
      * synchronization doesn't mean that all the data has been sent to the site, it's possible that some attempt can't be sent.
      *
-     * @param {any} scorm SCORM.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<AddonModScormSyncResult>} Promise resolved in success.
+     * @param scorm SCORM.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved in success.
      */
     syncScorm(scorm: any, siteId?: string): Promise<AddonModScormSyncResult> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
@@ -617,8 +645,17 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
 
         this.logger.debug('Try to sync SCORM ' + scorm.id + ' in site ' + siteId);
 
-        // Get attempts data. We ignore cache for online attempts, so this call will fail if offline or server down.
-        syncPromise = this.scormProvider.getAttemptCount(scorm.id, false, true, siteId).then((attemptsData) => {
+        // Sync offline logs.
+        syncPromise = this.logHelper.syncIfNeeded(AddonModScormProvider.COMPONENT, scorm.id, siteId).catch(() => {
+            // Ignore errors.
+        }).then(() => {
+            // Get attempts data. We ignore cache for online attempts, so this call will fail if offline or server down.
+            return this.scormProvider.getAttemptCount(scorm.id, {
+                cmId: scorm.coursemodule,
+                readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+                siteId,
+            });
+        }).then((attemptsData) => {
             if (!attemptsData.offline || !attemptsData.offline.length) {
                 // Nothing to sync.
                 return this.finishSync(siteId, scorm, warnings, lastOnline, lastOnlineWasFinished);
@@ -637,8 +674,12 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
             });
 
             // Check if last online attempt is finished. Ignore cache.
-            const promise = lastOnline > 0 ? this.scormProvider.isAttemptIncomplete(scorm.id, lastOnline, false, true, siteId) :
-                    Promise.resolve(false);
+            const promise = lastOnline <= 0 ? Promise.resolve(false) :
+                    this.scormProvider.isAttemptIncomplete(scorm.id, lastOnline, {
+                        cmId: scorm.coursemodule,
+                        readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+                        siteId,
+                    });
 
             return promise.then((incomplete) => {
                 lastOnlineWasFinished = !incomplete;
@@ -649,7 +690,7 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
 
                     attemptsData.offline.forEach((attempt) => {
                         if (scorm.maxattempt == 0 || attempt <= scorm.maxattempt) {
-                            promises.push(this.syncAttempt(scorm.id, attempt, siteId));
+                            promises.push(this.syncAttempt(scorm.id, attempt, scorm.coursemodule, siteId));
                         }
                     });
 
@@ -660,7 +701,8 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
 
                 } else if (collisions.length) {
                     // We have collisions, treat them.
-                    return this.treatCollisions(scorm.id, collisions, lastOnline, attemptsData.offline, siteId).then((warns) => {
+                    return this.treatCollisions(scorm.id, collisions, lastOnline, attemptsData.offline, scorm.coursemodule, siteId)
+                            .then((warns) => {
                         warnings = warnings.concat(warns);
 
                         // The offline attempts might have changed since some collisions can be converted to new attempts.
@@ -682,7 +724,7 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
                                 // We'll only sync new attemps if last online attempt is completed.
                                 if (!incomplete || attempt <= lastOnline) {
                                     if (scorm.maxattempt == 0 || attempt <= scorm.maxattempt) {
-                                        promises.push(this.syncAttempt(scorm.id, attempt, siteId));
+                                        promises.push(this.syncAttempt(scorm.id, attempt, scorm.coursemodule, siteId));
                                     }
                                 } else {
                                     cannotSyncSome = true;
@@ -714,12 +756,13 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
     /**
      * Treat collisions found in a SCORM synchronization process.
      *
-     * @param {number} scormId SCORM ID.
-     * @param {number[]} collisions Numbers of attempts that exist both in online and offline.
-     * @param {number} lastOnline Last online attempt.
-     * @param {number[]} offlineAttempts Numbers of offline attempts.
-     * @param {string} siteId Site ID.
-     * @return {Promise<string[]} Promise resolved when the collisions have been treated. It returns warnings array.
+     * @param scormId SCORM ID.
+     * @param collisions Numbers of attempts that exist both in online and offline.
+     * @param lastOnline Last online attempt.
+     * @param offlineAttempts Numbers of offline attempts.
+     * @param cmId Module ID.
+     * @param siteId Site ID.
+     * @return Promise resolved when the collisions have been treated. It returns warnings array.
      * @description
      *
      * Treat collisions found in a SCORM synchronization process. A collision is when an attempt exists both in offline
@@ -739,8 +782,8 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
      * of the list if the last attempt is completed. If the last attempt is not completed then the offline data will de deleted
      * because we can't create a new attempt.
      */
-    protected treatCollisions(scormId: number, collisions: number[], lastOnline: number, offlineAttempts: number[], siteId: string)
-            : Promise<string[]> {
+    protected treatCollisions(scormId: number, collisions: number[], lastOnline: number, offlineAttempts: number[], cmId: number,
+            siteId: string): Promise<string[]> {
 
         const warnings = [],
             newAttemptsSameOrder = [], // Attempts that will be created as new attempts but keeping the current order.
@@ -749,7 +792,7 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
         let lastOffline = Math.max.apply(Math, offlineAttempts);
 
         // Get needed data from the last offline attempt.
-        return this.getOfflineAttemptData(scormId, lastOffline, siteId).then((lastOfflineData) => {
+        return this.getOfflineAttemptData(scormId, lastOffline, cmId, siteId).then((lastOfflineData) => {
             const promises = [];
 
             collisions.forEach((attempt) => {
@@ -773,7 +816,7 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
 
                             if (hasDataToSend) {
                                 // There are elements to sync. We need to check if it's possible to sync them or not.
-                                return this.canRetrySync(scormId, attempt, lastOnline, siteId).catch(() => {
+                                return this.canRetrySync(scormId, attempt, lastOnline, cmId, siteId).catch(() => {
                                     // Cannot retry sync, we'll create a new offline attempt if possible.
                                     return this.addToNewOrDelete(scormId, attempt, lastOffline, newAttemptsSameOrder,
                                             newAttemptsAtEnd, lastOfflineData.timecreated, lastOfflineData.incomplete, warnings,
@@ -794,8 +837,11 @@ export class AddonModScormSyncProvider extends CoreSyncBaseProvider {
                                 // If it's the last attempt we don't need to ignore cache because we already did it.
                                 const refresh = lastOnline != attempt;
 
-                                return this.scormProvider.getScormUserData(scormId, attempt, undefined, false, refresh, siteId)
-                                        .then((data) => {
+                                return this.scormProvider.getScormUserData(scormId, attempt, {
+                                    cmId,
+                                    readingStrategy: refresh ? CoreSitesReadingStrategy.OnlyNetwork : undefined,
+                                    siteId,
+                                }).then((data) => {
 
                                     if (!this.snapshotEquals(snapshot, data)) {
                                         // Snapshot has diverged, it will be converted into a new attempt if possible.

@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,20 +34,36 @@ export class AddonModForumDiscussionLinkHandler extends CoreContentLinksHandlerB
     /**
      * Get the list of actions for a link (url).
      *
-     * @param {string[]} siteIds List of sites the URL belongs to.
-     * @param {string} url The URL to treat.
-     * @param {any} params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
-     * @param {number} [courseId] Course ID related to the URL. Optional but recommended.
-     * @return {CoreContentLinksAction[]|Promise<CoreContentLinksAction[]>} List of (or promise resolved with list of) actions.
+     * @param siteIds List of sites the URL belongs to.
+     * @param url The URL to treat.
+     * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
+     * @param courseId Course ID related to the URL. Optional but recommended.
+     * @param data Extra data to handle the URL.
+     * @return List of (or promise resolved with list of) actions.
      */
-    getActions(siteIds: string[], url: string, params: any, courseId?: number):
+    getActions(siteIds: string[], url: string, params: any, courseId?: number, data?: any):
             CoreContentLinksAction[] | Promise<CoreContentLinksAction[]> {
+        data = data || {};
+
+        // On 3.6 downwards, it will open the discussion but without knowing the lock status of the discussion.
+        // However canreply will be false.
+
         return [{
             action: (siteId, navCtrl?): void => {
-                const pageParams = {
-                    courseId: courseId || parseInt(params.courseid, 10) || parseInt(params.cid, 10),
+                const pageParams: any = {
+                    courseId: courseId || parseInt(params.courseid, 10) || parseInt(params.cid, 10) || undefined,
                     discussionId: parseInt(params.d, 10),
+                    cmId: data.cmid && parseInt(data.cmid, 10),
+                    forumId: data.instance && parseInt(data.instance, 10)
                 };
+
+                if (data.postid || params.urlHash) {
+                    pageParams.postId = parseInt(data.postid || params.urlHash.replace('p', ''));
+                }
+                if (params.parent) {
+                    pageParams.parent = parseInt(params.parent);
+                }
+
                 this.linkHelper.goInSite(navCtrl, 'AddonModForumDiscussionPage', pageParams, siteId);
             }
         }];
@@ -57,11 +73,11 @@ export class AddonModForumDiscussionLinkHandler extends CoreContentLinksHandlerB
      * Check if the handler is enabled for a certain site (site + user) and a URL.
      * If not defined, defaults to true.
      *
-     * @param {string} siteId The site ID.
-     * @param {string} url The URL to treat.
-     * @param {any} params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
-     * @param {number} [courseId] Course ID related to the URL. Optional but recommended.
-     * @return {boolean|Promise<boolean>} Whether the handler is enabled for the URL and site.
+     * @param siteId The site ID.
+     * @param url The URL to treat.
+     * @param params The params of the URL. E.g. 'mysite.com?id=1' -> {id: 1}
+     * @param courseId Course ID related to the URL. Optional but recommended.
+     * @return Whether the handler is enabled for the URL and site.
      */
     isEnabled(siteId: string, url: string, params: any, courseId?: number): boolean | Promise<boolean> {
         return true;

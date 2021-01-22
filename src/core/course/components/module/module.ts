@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@ import { CoreEventsProvider } from '@providers/events';
 import { CoreSitesProvider } from '@providers/sites';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreCourseHelperProvider } from '../../providers/helper';
+import { CoreCourseProvider } from '../../providers/course';
 import { CoreCourseModuleHandlerButton } from '../../providers/module-delegate';
 import { CoreCourseModulePrefetchDelegate, CoreCourseModulePrefetchHandler } from '../../providers/module-prefetch-delegate';
-import { CoreConstants } from '../../../constants';
 
 /**
  * Component to display a module entry in a list of modules.
@@ -36,6 +36,7 @@ import { CoreConstants } from '../../../constants';
 export class CoreCourseModuleComponent implements OnInit, OnDestroy {
     @Input() module: any; // The module to render.
     @Input() courseId: number; // The course the module belongs to.
+    @Input() section: any; // The section the module belongs to.
     @Input('downloadEnabled') set enabled(value: boolean) {
         this.downloadEnabled = value;
 
@@ -48,11 +49,12 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
             this.prefetchDelegate.getModuleStatus(this.module, this.courseId).then(this.showStatus.bind(this));
         }
     }
-    @Output() completionChanged?: EventEmitter<void>; // Will emit an event when the module completion changes.
+    @Output() completionChanged?: EventEmitter<any>; // Will emit an event when the module completion changes.
+    @Output() statusChanged?: EventEmitter<any>; // Will emit an event when the download status changes.
 
-    showDownload: boolean; // Whether to display the download button.
-    showRefresh: boolean; // Whether to display the refresh button.
-    spinner: boolean; // Whether to display a spinner.
+    downloadStatus: string;
+    canCheckUpdates: boolean;
+    spinner: boolean; // Whether to display a loading spinner.
     downloadEnabled: boolean; // Whether the download of sections and modules is enabled.
 
     protected prefetchHandler: CoreCourseModulePrefetchHandler;
@@ -62,8 +64,10 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
 
     constructor(@Optional() protected navCtrl: NavController, protected prefetchDelegate: CoreCourseModulePrefetchDelegate,
             protected domUtils: CoreDomUtilsProvider, protected courseHelper: CoreCourseHelperProvider,
-            protected eventsProvider: CoreEventsProvider, protected sitesProvider: CoreSitesProvider) {
+            protected eventsProvider: CoreEventsProvider, protected sitesProvider: CoreSitesProvider,
+            protected courseProvider: CoreCourseProvider) {
         this.completionChanged = new EventEmitter();
+        this.statusChanged = new EventEmitter();
     }
 
     /**
@@ -78,27 +82,36 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
         if (this.module.handlerData.showDownloadButton) {
             // Listen for changes on this module status, even if download isn't enabled.
             this.prefetchHandler = this.prefetchDelegate.getPrefetchHandlerFor(this.module);
+            this.canCheckUpdates = this.prefetchDelegate.canCheckUpdates();
 
             this.statusObserver = this.eventsProvider.on(CoreEventsProvider.PACKAGE_STATUS_CHANGED, (data) => {
                 if (data.componentId === this.module.id && this.prefetchHandler &&
                         data.component === this.prefetchHandler.component) {
 
+                    // Call determineModuleStatus to get the right status to display.
+                    const status = this.prefetchDelegate.determineModuleStatus(this.module, data.status);
+
                     if (this.downloadEnabled) {
                         // Download is enabled, show the status.
-                        this.showStatus(data.status);
+                        this.showStatus(status);
                     } else if (this.module.handlerData.updateStatus) {
                         // Download isn't enabled but the handler defines a updateStatus function, call it anyway.
-                        this.module.handlerData.updateStatus(data.status);
+                        this.module.handlerData.updateStatus(status);
                     }
                 }
             }, this.sitesProvider.getCurrentSiteId());
         }
+
+        this.module.handlerData.a11yTitle = typeof this.module.handlerData.a11yTitle != 'undefined' ?
+            this.module.handlerData.a11yTitle : this.module.handlerData.title;
+
+        this.module.modnametranslated = this.courseProvider.translateModuleName(this.module.modname) || '';
     }
 
     /**
      * Function called when the module is clicked.
      *
-     * @param {Event} event Click event.
+     * @param event Click event.
      */
     moduleClicked(event: Event): void {
         if (this.module.uservisible !== false && this.module.handlerData.action) {
@@ -109,8 +122,8 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
     /**
      * Function called when a button is clicked.
      *
-     * @param {Event} event Click event.
-     * @param {CoreCourseModuleHandlerButton} button The clicked button.
+     * @param event Click event.
+     * @param button The clicked button.
      */
     buttonClicked(event: Event, button: CoreCourseModuleHandlerButton): void {
         if (button && button.action) {
@@ -124,13 +137,9 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
     /**
      * Download the module.
      *
-     * @param {Event} event Click event.
-     * @param {boolean} refresh Whether it's refreshing.
+     * @param refresh Whether it's refreshing.
      */
-    download(event: Event, refresh: boolean): void {
-        event.preventDefault();
-        event.stopPropagation();
-
+    download(refresh: boolean): void {
         if (!this.prefetchHandler) {
             return;
         }
@@ -141,6 +150,13 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
         // Get download size to ask for confirm if it's high.
         this.prefetchHandler.getDownloadSize(this.module, this.courseId, true).then((size) => {
             return this.courseHelper.prefetchModule(this.prefetchHandler, this.module, size, this.courseId, refresh);
+        }).then(() => {
+            const eventData = {
+                sectionId: this.section.id,
+                moduleId: this.module.id,
+                courseId: this.courseId
+            };
+            this.statusChanged.emit(eventData);
         }).catch((error) => {
             // Error, hide spinner.
             this.spinner = false;
@@ -153,14 +169,12 @@ export class CoreCourseModuleComponent implements OnInit, OnDestroy {
     /**
      * Show download buttons according to module status.
      *
-     * @param {string} status Module status.
+     * @param status Module status.
      */
     protected showStatus(status: string): void {
         if (status) {
-            this.spinner = status === CoreConstants.DOWNLOADING;
-            this.showDownload = status === CoreConstants.NOT_DOWNLOADED;
-            this.showRefresh = status === CoreConstants.OUTDATED ||
-                (!this.prefetchDelegate.canCheckUpdates() && status === CoreConstants.DOWNLOADED);
+            this.spinner = false;
+            this.downloadStatus = status;
 
             if (this.module.handlerData.updateStatus) {
                 this.module.handlerData.updateStatus(status);

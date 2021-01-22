@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 
 import { CoreLoggerProvider } from '@providers/logger';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
+import { CoreTextUtilsProvider } from '@providers/utils/text';
 
 /**
  * Set of functions to get the CSS selectors.
@@ -51,15 +52,16 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Create the instance.
      *
-     * @param {CoreLoggerProvider} logger Logger provider.
-     * @param {CoreDomUtilsProvider} domUtils Dom Utils provider.
-     * @param {HTMLElement} container The container HTMLElement of the question.
-     * @param {any} question The question instance.
-     * @param {boolean} readOnly Whether it's read only.
-     * @param {string[]} inputIds Ids of the inputs of the question (where the answers will be stored).
+     * @param logger Logger provider.
+     * @param domUtils Dom Utils provider.
+     * @param container The container HTMLElement of the question.
+     * @param question The question instance.
+     * @param readOnly Whether it's read only.
+     * @param inputIds Ids of the inputs of the question (where the answers will be stored).
      */
     constructor(logger: CoreLoggerProvider, protected domUtils: CoreDomUtilsProvider, protected container: HTMLElement,
-            protected question: any, protected readOnly: boolean, protected inputIds: string[]) {
+            protected question: any, protected readOnly: boolean, protected inputIds: string[],
+            protected textUtils: CoreTextUtilsProvider) {
         this.logger = logger.getInstance('AddonQtypeDdwtosQuestion');
 
         this.initializer(question);
@@ -68,7 +70,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Clone a drag item and add it to the drag container.
      *
-     * @param {HTMLElement} dragHome Item to clone
+     * @param dragHome Item to clone
      */
     cloneDragItem(dragHome: HTMLElement): void {
         const drag = <HTMLElement> dragHome.cloneNode(true);
@@ -104,7 +106,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Clone a certain 'drag home'. If it's an "infinite" drag, clone it several times.
      *
-     * @param {HTMLElement} dragHome Element to clone.
+     * @param dragHome Element to clone.
      */
     cloneDragItemsForOneChoice(dragHome: HTMLElement): void {
         if (dragHome.classList.contains('infinite')) {
@@ -122,8 +124,8 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Get an object with a set of functions to get the CSS selectors.
      *
-     * @param {number} slot Question slot.
-     * @return {AddonQtypeDdwtosQuestionCSSSelectors} Object with the functions to get the selectors.
+     * @param slot Question slot.
+     * @return Object with the functions to get the selectors.
      */
     cssSelectors(slot: number): AddonQtypeDdwtosQuestionCSSSelectors {
         const topNode = '.addon-qtype-ddwtos-container',
@@ -202,8 +204,8 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Get the choice number of an element. It is extracted from the classes.
      *
-     * @param {HTMLElement} node Element to check.
-     * @return {number} Choice number.
+     * @param node Element to check.
+     * @return Choice number.
      */
     getChoice(node: HTMLElement): number {
         return this.getClassnameNumericSuffix(node, 'choice');
@@ -212,9 +214,9 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Get the number in a certain class name of an element.
      *
-     * @param {HTMLElement} node The element to check.
-     * @param {string} prefix Prefix of the class to check.
-     * @return {number} The number in the class.
+     * @param node The element to check.
+     * @param prefix Prefix of the class to check.
+     * @return The number in the class.
      */
     getClassnameNumericSuffix(node: HTMLElement, prefix: string): number {
         if (node.classList && node.classList.length) {
@@ -236,8 +238,8 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Get the group number of an element. It is extracted from the classes.
      *
-     * @param {HTMLElement} node Element to check.
-     * @return {number} Group number.
+     * @param node Element to check.
+     * @return Group number.
      */
     getGroup(node: HTMLElement): number {
         return this.getClassnameNumericSuffix(node, 'group');
@@ -246,8 +248,8 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Get the number of an element ('no'). It is extracted from the classes.
      *
-     * @param {HTMLElement} node Element to check.
-     * @return {number} Number.
+     * @param node Element to check.
+     * @return Number.
      */
     getNo(node: HTMLElement): number {
         return this.getClassnameNumericSuffix(node, 'no');
@@ -256,8 +258,8 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Get the place number of an element. It is extracted from the classes.
      *
-     * @param {HTMLElement} node Element to check.
-     * @return {number} Place number.
+     * @param node Element to check.
+     * @return Place number.
      */
     getPlace(node: HTMLElement): number {
         return this.getClassnameNumericSuffix(node, 'place');
@@ -266,7 +268,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Initialize the question.
      *
-     * @param {any} question Question.
+     * @param question Question.
      */
     initializer(question: any): void {
         this.selectors = this.cssSelectors(question.slot);
@@ -324,7 +326,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Make an element "draggable". In the mobile app, items are "dragged" using tap and drop.
      *
-     * @param {HTMLElement} drag Element.
+     * @param drag Element.
      */
     makeDraggable(drag: HTMLElement): void {
         drag.addEventListener('click', () => {
@@ -339,7 +341,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Convert an element into a drop zone.
      *
-     * @param {HTMLElement} drop Element.
+     * @param drop Element.
      */
     makeDropZone(drop: HTMLElement): void {
         drop.addEventListener('click', () => {
@@ -399,21 +401,21 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Set the width and height of an element.
      *
-     * @param {HTMLElement} node Element.
-     * @param {number} width Width to set.
-     * @param {number} height Height to set.
+     * @param node Element.
+     * @param width Width to set.
+     * @param height Height to set.
      */
     protected padToWidthHeight(node: HTMLElement, width: number, height: number): void {
         node.style.width = width + 'px';
         node.style.height = height + 'px';
-        node.style.lineHeight = height + 'px';
+        // Originally lineHeight was set as height to center the text but it comes on too height lines on multiline elements.
     }
 
     /**
      * Place a draggable element inside a drop zone.
      *
-     * @param {HTMLElement} drag Draggable element.
-     * @param {HTMLElement} drop Drop zone.
+     * @param drag Draggable element.
+     * @param drop Drop zone.
      */
     placeDragInDrop(drag: HTMLElement, drop: HTMLElement): void {
 
@@ -444,7 +446,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Position a drag element in the right drop zone or in the home zone.
      *
-     * @param {HTMLElement} drag Drag element.
+     * @param drag Drag element.
      */
     positionDragItem(drag: HTMLElement): void {
         let position;
@@ -483,7 +485,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Remove a draggable element from a drop zone.
      *
-     * @param {HTMLElement} drag The draggable element.
+     * @param drag The draggable element.
      */
     removeDragFromDrop(drag: HTMLElement): void {
         const placeNo = this.placed[this.getNo(drag)],
@@ -495,7 +497,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Select a certain element as being "dragged".
      *
-     * @param {HTMLElement} drag Element.
+     * @param drag Element.
      */
     selectDrag(drag: HTMLElement): void {
         // Deselect previous drags, only 1 can be selected.
@@ -517,7 +519,7 @@ export class AddonQtypeDdwtosQuestion {
     /**
      * Set the padding size for a certain group.
      *
-     * @param {number} groupNo Group number.
+     * @param groupNo Group number.
      */
     setPaddingSizeForGroup(groupNo: number): void {
         const groupItems = <HTMLElement[]> Array.from(this.container.querySelectorAll(this.selectors.dragHomesGroup(groupNo)));
@@ -528,6 +530,7 @@ export class AddonQtypeDdwtosQuestion {
 
             // Find max height and width.
             groupItems.forEach((item) => {
+                item.innerHTML = this.textUtils.decodeHTML(item.innerHTML);
                 maxWidth = Math.max(maxWidth, Math.ceil(item.offsetWidth));
                 maxHeight = Math.max(maxHeight, Math.ceil(item.offsetHeight));
             });

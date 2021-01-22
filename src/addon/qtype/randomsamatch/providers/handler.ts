@@ -1,5 +1,5 @@
 
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,9 +32,9 @@ export class AddonQtypeRandomSaMatchHandler implements CoreQuestionHandler {
      * Return the Component to use to display the question.
      * It's recommended to return the class of the component, but you can also return an instance of the component.
      *
-     * @param {Injector} injector Injector.
-     * @param {any} question The question to render.
-     * @return {any|Promise<any>} The component (or promise resolved with component) to use, undefined if not found.
+     * @param injector Injector.
+     * @param question The question to render.
+     * @return The component (or promise resolved with component) to use, undefined if not found.
      */
     getComponent(injector: Injector, question: any): any | Promise<any> {
         // Random behaves like a match question, use the same component.
@@ -44,19 +44,21 @@ export class AddonQtypeRandomSaMatchHandler implements CoreQuestionHandler {
     /**
      * Check if a response is complete.
      *
-     * @param {any} question The question.
-     * @param {any} answers Object with the question answers (without prefix).
-     * @return {number} 1 if complete, 0 if not complete, -1 if cannot determine.
+     * @param question The question.
+     * @param answers Object with the question answers (without prefix).
+     * @param component The component the question is related to.
+     * @param componentId Component ID.
+     * @return 1 if complete, 0 if not complete, -1 if cannot determine.
      */
-    isCompleteResponse(question: any, answers: any): number {
+    isCompleteResponse(question: any, answers: any, component: string, componentId: string | number): number {
         // This question behaves like a match question.
-        return this.matchHandler.isCompleteResponse(question, answers);
+        return this.matchHandler.isCompleteResponse(question, answers, component, componentId);
     }
 
     /**
      * Whether or not the handler is enabled on a site level.
      *
-     * @return {boolean|Promise<boolean>} True or promise resolved with true if enabled.
+     * @return True or promise resolved with true if enabled.
      */
     isEnabled(): boolean | Promise<boolean> {
         return true;
@@ -66,25 +68,29 @@ export class AddonQtypeRandomSaMatchHandler implements CoreQuestionHandler {
      * Check if a student has provided enough of an answer for the question to be graded automatically,
      * or whether it must be considered aborted.
      *
-     * @param {any} question The question.
-     * @param {any} answers Object with the question answers (without prefix).
-     * @return {number} 1 if gradable, 0 if not gradable, -1 if cannot determine.
+     * @param question The question.
+     * @param answers Object with the question answers (without prefix).
+     * @param component The component the question is related to.
+     * @param componentId Component ID.
+     * @return 1 if gradable, 0 if not gradable, -1 if cannot determine.
      */
-    isGradableResponse(question: any, answers: any): number {
+    isGradableResponse(question: any, answers: any, component: string, componentId: string | number): number {
         // This question behaves like a match question.
-        return this.matchHandler.isGradableResponse(question, answers);
+        return this.matchHandler.isGradableResponse(question, answers, component, componentId);
     }
 
     /**
      * Check if two responses are the same.
      *
-     * @param {any} question Question.
-     * @param {any} prevAnswers Object with the previous question answers.
-     * @param {any} newAnswers Object with the new question answers.
-     * @return {boolean} Whether they're the same.
+     * @param question Question.
+     * @param prevAnswers Object with the previous question answers.
+     * @param newAnswers Object with the new question answers.
+     * @param component The component the question is related to.
+     * @param componentId Component ID.
+     * @return Whether they're the same.
      */
-    isSameResponse(question: any, prevAnswers: any, newAnswers: any): boolean {
+    isSameResponse(question: any, prevAnswers: any, newAnswers: any, component: string, componentId: string | number): boolean {
         // This question behaves like a match question.
-        return this.matchHandler.isSameResponse(question, prevAnswers, newAnswers);
+        return this.matchHandler.isSameResponse(question, prevAnswers, newAnswers, component, componentId);
     }
 }

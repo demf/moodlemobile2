@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,7 +69,11 @@ export class AddonModQuizReviewPage implements OnInit {
         this.navigationModal = modalCtrl.create('AddonModQuizNavigationModalPage', {
             isReview: true,
             page: this
-        });
+        }, { cssClass: 'core-modal-lateral',
+            showBackdrop: true,
+            enableBackdropDismiss: true,
+            enterAnimation: 'core-modal-lateral-transition',
+            leaveAnimation: 'core-modal-lateral-transition' });
     }
 
     /**
@@ -77,7 +81,7 @@ export class AddonModQuizReviewPage implements OnInit {
      */
     ngOnInit(): void {
         this.fetchData().then(() => {
-            this.quizProvider.logViewAttemptReview(this.attemptId).catch((error) => {
+            this.quizProvider.logViewAttemptReview(this.attemptId, this.quizId, this.quiz.name).catch((error) => {
                 // Ignore errors.
             });
         }).finally(() => {
@@ -88,9 +92,9 @@ export class AddonModQuizReviewPage implements OnInit {
     /**
      * Change the current page. If slot is supplied, try to scroll to that question.
      *
-     * @param {number} page Page to load. -1 means all questions in same page.
-     * @param {boolean} [fromModal] Whether the page was selected using the navigation modal.
-     * @param {number} [slot] Slot of the question to scroll to.
+     * @param page Page to load. -1 means all questions in same page.
+     * @param fromModal Whether the page was selected using the navigation modal.
+     * @param slot Slot of the question to scroll to.
      */
     changePage(page: number, fromModal?: boolean, slot?: number): void {
         if (typeof slot != 'undefined' && (this.attempt.currentpage == -1 || page == this.currentPage)) {
@@ -123,14 +127,14 @@ export class AddonModQuizReviewPage implements OnInit {
     /**
      * Convenience function to get the quiz data.
      *
-     * @return {Promise<any>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected fetchData(): Promise<any> {
         return this.quizProvider.getQuizById(this.courseId, this.quizId).then((quizData) => {
             this.quiz = quizData;
             this.componentId = this.quiz.coursemodule;
 
-            return this.quizProvider.getCombinedReviewOptions(this.quizId).then((result) => {
+            return this.quizProvider.getCombinedReviewOptions(this.quizId, {cmId: this.quiz.coursemodule}).then((result) => {
                 this.options = result;
 
                 // Load the navigation data.
@@ -147,11 +151,11 @@ export class AddonModQuizReviewPage implements OnInit {
     /**
      * Load a page questions.
      *
-     * @param {number} page The page to load.
-     * @return {Promise<void>} Promise resolved when done.
+     * @param page The page to load.
+     * @return Promise resolved when done.
      */
     protected loadPage(page: number): Promise<void> {
-        return this.quizProvider.getAttemptReview(this.attemptId, page).then((data) => {
+        return this.quizProvider.getAttemptReview(this.attemptId, {page, cmId: this.quiz.coursemodule}).then((data) => {
             this.attempt = data.attempt;
             this.attempt.currentpage = page;
             this.currentPage = page;
@@ -179,11 +183,11 @@ export class AddonModQuizReviewPage implements OnInit {
     /**
      * Load data to navigate the questions using the navigation modal.
      *
-     * @return {Promise<void>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected loadNavigation(): Promise<void> {
         // Get all questions in single page to retrieve all the questions.
-        return this.quizProvider.getAttemptReview(this.attemptId, -1).then((data) => {
+        return this.quizProvider.getAttemptReview(this.attemptId, {page: -1, cmId: this.quiz.coursemodule}).then((data) => {
             const lastQuestion = data.questions[data.questions.length - 1];
 
             data.questions.forEach((question) => {
@@ -198,7 +202,7 @@ export class AddonModQuizReviewPage implements OnInit {
     /**
      * Refreshes data.
      *
-     * @param {any} refresher Refresher
+     * @param refresher Refresher
      */
     refreshData(refresher: any): void {
         const promises = [];
@@ -217,7 +221,7 @@ export class AddonModQuizReviewPage implements OnInit {
     /**
      * Scroll to a certain question.
      *
-     * @param {number} slot Slot of the question to scroll to.
+     * @param slot Slot of the question to scroll to.
      */
     protected scrollToQuestion(slot: number): void {
         this.domUtils.scrollToElementBySelector(this.content, '#addon-mod_quiz-question-' + slot);
@@ -226,7 +230,7 @@ export class AddonModQuizReviewPage implements OnInit {
     /**
      * Calculate review summary data.
      *
-     * @param {any} data Result of getAttemptReview.
+     * @param data Result of getAttemptReview.
      */
     protected setSummaryCalculatedData(data: any): void {
 

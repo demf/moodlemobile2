@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,9 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
-import { Platform } from 'ionic-angular';
+import { ModalController } from 'ionic-angular';
 import { Camera, CameraOptions } from '@ionic-native/camera';
+import { FileEntry } from '@ionic-native/file';
 import { MediaCapture, MediaFile, CaptureError, CaptureAudioOptions, CaptureVideoOptions } from '@ionic-native/media-capture';
 import { TranslateService } from '@ngx-translate/core';
 import { CoreFileProvider } from '@providers/file';
@@ -25,8 +26,11 @@ import { CoreMimetypeUtilsProvider } from '@providers/utils/mimetype';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
 import { CoreTimeUtilsProvider } from '@providers/utils/time';
 import { CoreUtilsProvider } from '@providers/utils/utils';
-import { CoreWSFileUploadOptions } from '@providers/ws';
+import { CoreWSFileUploadOptions, CoreWSExternalFile } from '@providers/ws';
 import { Subject } from 'rxjs';
+import { CoreApp } from '@providers/app';
+import { CoreSite } from '@classes/site';
+import { makeSingleton } from '@singletons/core.singletons';
 
 /**
  * File upload options.
@@ -34,7 +38,6 @@ import { Subject } from 'rxjs';
 export interface CoreFileUploaderOptions extends CoreWSFileUploadOptions {
     /**
      * Whether the file should be deleted after the upload (if success).
-     * @type {boolean}
      */
     deleteAfterUpload?: boolean;
 }
@@ -54,19 +57,26 @@ export class CoreFileUploaderProvider {
     onAudioCapture: Subject<boolean> = new Subject<boolean>();
     onVideoCapture: Subject<boolean> = new Subject<boolean>();
 
-    constructor(logger: CoreLoggerProvider, private fileProvider: CoreFileProvider, private textUtils: CoreTextUtilsProvider,
-            private utils: CoreUtilsProvider, private sitesProvider: CoreSitesProvider, private timeUtils: CoreTimeUtilsProvider,
-            private mimeUtils: CoreMimetypeUtilsProvider, private filepoolProvider: CoreFilepoolProvider,
-            private platform: Platform, private translate: TranslateService, private mediaCapture: MediaCapture,
-            private camera: Camera) {
+    constructor(logger: CoreLoggerProvider,
+            protected fileProvider: CoreFileProvider,
+            protected textUtils: CoreTextUtilsProvider,
+            protected utils: CoreUtilsProvider,
+            protected sitesProvider: CoreSitesProvider,
+            protected timeUtils: CoreTimeUtilsProvider,
+            protected mimeUtils: CoreMimetypeUtilsProvider,
+            protected filepoolProvider: CoreFilepoolProvider,
+            protected translate: TranslateService,
+            protected mediaCapture: MediaCapture,
+            protected camera: Camera,
+            protected modalCtrl: ModalController) {
         this.logger = logger.getInstance('CoreFileUploaderProvider');
     }
 
     /**
      * Add a dot to the beginning of an extension.
      *
-     * @param {string} extension Extension.
-     * @return {string}           Treated extension.
+     * @param extension Extension.
+     * @return Treated extension.
      */
     protected addDot(extension: string): string {
         return '.' + extension;
@@ -75,9 +85,9 @@ export class CoreFileUploaderProvider {
     /**
      * Compares two file lists and returns if they are different.
      *
-     * @param {any[]} a First file list.
-     * @param {any[]} b Second file list.
-     * @return {boolean} Whether both lists are different.
+     * @param a First file list.
+     * @param b Second file list.
+     * @return Whether both lists are different.
      */
     areFileListDifferent(a: any[], b: any[]): boolean {
         a = a || [];
@@ -89,7 +99,7 @@ export class CoreFileUploaderProvider {
         // Currently we are going to compare the order of the files as well.
         // This function can be improved comparing more fields or not comparing the order.
         for (let i = 0; i < a.length; i++) {
-            if ((a[i].name || a[i].filename) != (b[i].name || b[i].filename)) {
+            if (a[i].name != b[i].name || a[i].filename != b[i].filename) {
                 return true;
             }
         }
@@ -98,10 +108,40 @@ export class CoreFileUploaderProvider {
     }
 
     /**
+     * Check if a certain site allows deleting draft files.
+     *
+     * @param siteId Site Id. If not defined, use current site.
+     * @return Promise resolved with true if can delete.
+     * @since 3.10
+     */
+    async canDeleteDraftFiles(siteId?: string): Promise<boolean> {
+        try {
+            const site = await this.sitesProvider.getSite(siteId);
+
+            return this.canDeleteDraftFilesInSite(site);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    /**
+     * Check if a certain site allows deleting draft files.
+     *
+     * @param site Site. If not defined, use current site.
+     * @return Whether draft files can be deleted.
+     * @since 3.10
+     */
+    canDeleteDraftFilesInSite(site?: CoreSite): boolean {
+        site = site || this.sitesProvider.getCurrentSite();
+
+        return site.wsAvailable('core_files_delete_draft_files');
+    }
+
+    /**
      * Start the audio recorder application and return information about captured audio clip files.
      *
-     * @param {CaptureAudioOptions} options Options.
-     * @return {Promise<MediaFile[] | CaptureError>} Promise resolved with the result.
+     * @param options Options.
+     * @return Promise resolved with the result.
      */
     captureAudio(options: CaptureAudioOptions): Promise<MediaFile[] | CaptureError> {
         this.onAudioCapture.next(true);
@@ -112,10 +152,33 @@ export class CoreFileUploaderProvider {
     }
 
     /**
+     * Record an audio file without using an external app.
+     *
+     * @return Promise resolved with the file.
+     */
+    captureAudioInApp(): Promise<MediaFile> {
+        return new Promise((resolve, reject): any => {
+            const params = {
+                type: 'audio',
+            };
+
+            const modal = this.modalCtrl.create('CoreEmulatorCaptureMediaPage', params, { enableBackdropDismiss: false });
+            modal.present();
+            modal.onDidDismiss((data: any, role: string) => {
+                if (role == 'success') {
+                    resolve(data[0]);
+                } else {
+                    reject(data);
+                }
+            });
+        });
+    }
+
+    /**
      * Start the video recorder application and return information about captured video clip files.
      *
-     * @param {CaptureVideoOptions} options Options.
-     * @return {Promise<MediaFile[] | CaptureError>} Promise resolved with the result.
+     * @param options Options.
+     * @return Promise resolved with the result.
      */
     captureVideo(options: CaptureVideoOptions): Promise<MediaFile[] | CaptureError> {
         this.onVideoCapture.next(true);
@@ -129,7 +192,7 @@ export class CoreFileUploaderProvider {
      * Clear temporary attachments to be uploaded.
      * Attachments already saved in an offline store will NOT be deleted.
      *
-     * @param {any[]} files List of files.
+     * @param files List of files.
      */
     clearTmpFiles(files: any[]): void {
         // Delete the local files.
@@ -144,34 +207,58 @@ export class CoreFileUploaderProvider {
     }
 
     /**
+     * Delete draft files.
+     *
+     * @param draftId Draft ID.
+     * @param files Files to delete.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when done.
+     */
+    async deleteDraftFiles(draftId: number, files: {filepath: string, filename: string}[], siteId?: string): Promise<void> {
+        const site = await this.sitesProvider.getSite(siteId);
+
+        const params = {
+            draftitemid: draftId,
+            files: files,
+        };
+
+        return site.write('core_files_delete_draft_files', params);
+    }
+
+    /**
      * Get the upload options for a file taken with the Camera Cordova plugin.
      *
-     * @param {string} uri File URI.
-     * @param {boolean} [isFromAlbum] True if the image was taken from album, false if it's a new image taken with camera.
-     * @return {CoreFileUploaderOptions} Options.
+     * @param uri File URI.
+     * @param isFromAlbum True if the image was taken from album, false if it's a new image taken with camera.
+     * @return Options.
      */
     getCameraUploadOptions(uri: string, isFromAlbum?: boolean): CoreFileUploaderOptions {
-        const extension = this.mimeUtils.getExtension(uri),
-            mimetype = this.mimeUtils.getMimeType(extension),
-            isIOS = this.platform.is('ios'),
-            options: CoreFileUploaderOptions = {
+        const extension = this.mimeUtils.guessExtensionFromUrl(uri);
+        const mimetype = this.mimeUtils.getMimeType(extension);
+        const isIOS = CoreApp.instance.isIOS();
+        const options: CoreFileUploaderOptions = {
                 deleteAfterUpload: !isFromAlbum,
                 mimeType: mimetype
             };
+        const fileName = this.fileProvider.getFileAndDirectoryFromPath(uri).name;
 
         if (isIOS && (mimetype == 'image/jpeg' || mimetype == 'image/png')) {
             // In iOS, the pictures can have repeated names, even if they come from the album.
-            options.fileName = 'image_' + this.timeUtils.readableTimestamp() + '.' + extension;
+            // Add a timestamp to the filename to make it unique.
+            const split = fileName.split('.');
+            split[0] += '_' + this.timeUtils.readableTimestamp();
+
+            options.fileName = split.join('.');
         } else {
             // Use the same name that the file already has.
-            options.fileName = this.fileProvider.getFileAndDirectoryFromPath(uri).name;
+            options.fileName = fileName;
         }
 
         if (isFromAlbum) {
             // If the file was picked from the album, delete it only if it was copied to the app's folder.
             options.deleteAfterUpload = this.fileProvider.isFileInAppFolder(uri);
 
-            if (this.platform.is('android')) {
+            if (CoreApp.instance.isAndroid()) {
                 // Picking an image from album in Android adds a timestamp at the end of the file. Delete it.
                 options.fileName = options.fileName.replace(/(\.[^\.]*)\?[^\.]*$/, '$1');
             }
@@ -181,15 +268,44 @@ export class CoreFileUploaderProvider {
     }
 
     /**
+     * Given a list of original files and a list of current files, return the list of files to delete.
+     *
+     * @param originalFiles Original files.
+     * @param currentFiles Current files.
+     * @return List of files to delete.
+     */
+    getFilesToDelete(originalFiles: CoreWSExternalFile[], currentFiles: (CoreWSExternalFile | FileEntry)[])
+            : {filepath: string, filename: string}[] {
+
+        const filesToDelete: {filepath: string, filename: string}[] = [];
+        currentFiles = currentFiles || [];
+
+        originalFiles.forEach((file) => {
+            const stillInList = currentFiles.some((currentFile) => {
+                return (<CoreWSExternalFile> currentFile).fileurl == file.fileurl;
+            });
+
+            if (!stillInList) {
+                filesToDelete.push({
+                    filepath: file.filepath,
+                    filename: file.filename,
+                });
+            }
+        });
+
+        return filesToDelete;
+    }
+
+    /**
      * Get the upload options for a file of any type.
      *
-     * @param {string} uri File URI.
-     * @param {string} name File name.
-     * @param {string} type File type.
-     * @param {boolean} [deleteAfterUpload] Whether the file should be deleted after upload.
-     * @param {string} [fileArea] File area to upload the file to. It defaults to 'draft'.
-     * @param {number} [itemId] Draft ID to upload the file to, 0 to create new.
-     * @return {CoreFileUploaderOptions} Options.
+     * @param uri File URI.
+     * @param name File name.
+     * @param type File type.
+     * @param deleteAfterUpload Whether the file should be deleted after upload.
+     * @param fileArea File area to upload the file to. It defaults to 'draft'.
+     * @param itemId Draft ID to upload the file to, 0 to create new.
+     * @return Options.
      */
     getFileUploadOptions(uri: string, name: string, type: string, deleteAfterUpload?: boolean, fileArea?: string, itemId?: number)
             : CoreFileUploaderOptions {
@@ -206,18 +322,19 @@ export class CoreFileUploaderProvider {
     /**
      * Get the upload options for a file taken with the media capture Cordova plugin.
      *
-     * @param {MediaFile} mediaFile File object to upload.
-     * @return {CoreFileUploaderOptions} Options.
+     * @param mediaFile File object to upload.
+     * @return Options.
      */
     getMediaUploadOptions(mediaFile: MediaFile): CoreFileUploaderOptions {
         const options: CoreFileUploaderOptions = {};
-        let filename = mediaFile.name,
-            split;
+        let filename = mediaFile.name;
 
-        // Add a timestamp to the filename to make it unique.
-        split = filename.split('.');
-        split[0] += '_' + this.timeUtils.readableTimestamp();
-        filename = split.join('.');
+        if (!filename.match(/_\d{14}(\..*)?$/)) {
+            // Add a timestamp to the filename to make it unique.
+            const split = filename.split('.');
+            split[0] += '_' + this.timeUtils.readableTimestamp();
+            filename = split.join('.');
+        }
 
         options.fileName = filename;
         options.deleteAfterUpload = true;
@@ -233,8 +350,8 @@ export class CoreFileUploaderProvider {
     /**
      * Take a picture or video, or load one from the library.
      *
-     * @param {CameraOptions} options Options.
-     * @return {Promise<any>} Promise resolved with the result.
+     * @param options Options.
+     * @return Promise resolved with the result.
      */
     getPicture(options: CameraOptions): Promise<any> {
         this.onGetPicture.next(true);
@@ -247,8 +364,8 @@ export class CoreFileUploaderProvider {
     /**
      * Get the files stored in a folder, marking them as offline.
      *
-     * @param {string} folderPath Folder where to get the files.
-     * @return {Promise<any[]>} Promise resolved with the list of files.
+     * @param folderPath Folder where to get the files.
+     * @return Promise resolved with the list of files.
      */
     getStoredFiles(folderPath: string): Promise<any[]> {
         return this.fileProvider.getDirectoryContents(folderPath).then((files) => {
@@ -259,9 +376,9 @@ export class CoreFileUploaderProvider {
     /**
      * Get stored files from combined online and offline file object.
      *
-     * @param {{online: any[], offline: number}} filesObject The combined offline and online files object.
-     * @param {string} folderPath Folder path to get files from.
-     * @return {Promise<any[]>} Promise resolved with files.
+     * @param filesObject The combined offline and online files object.
+     * @param folderPath Folder path to get files from.
+     * @return Promise resolved with files.
      */
     getStoredFilesFromOfflineFilesObject(filesObject: { online: any[], offline: number }, folderPath: string): Promise<any[]> {
         let files = [];
@@ -288,18 +405,24 @@ export class CoreFileUploaderProvider {
      * Check if a file's mimetype is invalid based on the list of accepted mimetypes. This function needs either the file's
      * mimetype or the file's path/name.
      *
-     * @param {string[]} [mimetypes] List of supported mimetypes. If undefined, all mimetypes supported.
-     * @param {string} [path] File's path or name.
-     * @param {string} [mimetype] File's mimetype.
-     * @return {string} Undefined if file is valid, error message if file is invalid.
+     * @param mimetypes List of supported mimetypes. If undefined, all mimetypes supported.
+     * @param path File's path or name.
+     * @param mimetype File's mimetype.
+     * @return Undefined if file is valid, error message if file is invalid.
      */
     isInvalidMimetype(mimetypes?: string[], path?: string, mimetype?: string): string {
-        let extension;
+        let extension: string;
 
         if (mimetypes) {
             // Verify that the mimetype of the file is supported.
             if (mimetype) {
                 extension = this.mimeUtils.getExtension(mimetype);
+
+                if (mimetypes.indexOf(mimetype) == -1) {
+                    // Get the "main" mimetype of the extension.
+                    // It's possible that the list of accepted mimetypes only includes the "main" mimetypes.
+                    mimetype = this.mimeUtils.getMimeType(extension);
+                }
             } else {
                 extension = this.mimeUtils.getFileExtension(path);
                 mimetype = this.mimeUtils.getMimeType(extension);
@@ -316,8 +439,8 @@ export class CoreFileUploaderProvider {
     /**
      * Mark files as offline.
      *
-     * @param {any[]} files Files to mark as offline.
-     * @return {any[]} Files marked as offline.
+     * @param files Files to mark as offline.
+     * @return Files marked as offline.
      */
     markOfflineFiles(files: any[]): any[] {
         // Mark the files as pending offline.
@@ -332,10 +455,17 @@ export class CoreFileUploaderProvider {
     /**
      * Parse filetypeList to get the list of allowed mimetypes and the data to render information.
      *
-     * @param {string} filetypeList Formatted string list where the mimetypes can be checked.
-     * @return {{info: any[], mimetypes: string[]}}  Mimetypes and the filetypes informations.
+     * @param filetypeList Formatted string list where the mimetypes can be checked.
+     * @return Mimetypes and the filetypes informations. Undefined if all types supported.
      */
     prepareFiletypeList(filetypeList: string): { info: any[], mimetypes: string[] } {
+        filetypeList = filetypeList && filetypeList.trim();
+
+        if (!filetypeList || filetypeList == '*') {
+            // All types supported, return undefined.
+            return undefined;
+        }
+
         const filetypes = filetypeList.split(/[;, ]+/g),
             mimetypes = {}, // Use an object to prevent duplicates.
             typesInfo = [];
@@ -407,9 +537,9 @@ export class CoreFileUploaderProvider {
      * Given a list of files (either online files or local files), store the local files in a local folder
      * to be uploaded later.
      *
-     * @param {string} folderPath Path of the folder where to store the files.
-     * @param {any[]} files List of files.
-     * @return {Promise<{online: any[], offline: number}>} Promise resolved if success.
+     * @param folderPath Path of the folder where to store the files.
+     * @param files List of files.
+     * @return Promise resolved if success.
      */
     storeFilesToUpload(folderPath: string, files: any[]): Promise<{ online: any[], offline: number }> {
         const result = {
@@ -456,11 +586,11 @@ export class CoreFileUploaderProvider {
     /**
      * Upload a file.
      *
-     * @param {string} uri File URI.
-     * @param {CoreFileUploaderOptions} [options] Options for the upload.
-     * @param {Function} [onProgress] Function to call on progress.
-     * @param {string} [siteId] Id of the site to upload the file to. If not defined, use current site.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param uri File URI.
+     * @param options Options for the upload.
+     * @param onProgress Function to call on progress.
+     * @param siteId Id of the site to upload the file to. If not defined, use current site.
+     * @return Promise resolved when done.
      */
     uploadFile(uri: string, options?: CoreFileUploaderOptions, onProgress?: (event: ProgressEvent) => any,
             siteId?: string): Promise<any> {
@@ -486,14 +616,58 @@ export class CoreFileUploaderProvider {
     }
 
     /**
-     * Upload a file to a draft area. If the file is an online file it will be downloaded and then re-uploaded.
+     * Given a list of files (either online files or local files), upload the local files to the draft area.
+     * Local files are not deleted from the device after upload.
      *
-     * @param {any} file Online file or local FileEntry.
-     * @param {number} [itemId] Draft ID to use. Undefined or 0 to create a new draft ID.
-     * @param {string} [component] The component to set to the downloaded files.
-     * @param {string|number} [componentId] An ID to use in conjunction with the component.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<number>} Promise resolved with the itemId.
+     * @param itemId Draft ID.
+     * @param files List of files.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with the itemId.
+     */
+    async uploadFiles(itemId: number, files: (CoreWSExternalFile | FileEntry)[], siteId?: string): Promise<void> {
+        siteId = siteId || this.sitesProvider.getCurrentSiteId();
+
+        if (!files || !files.length) {
+            return;
+        }
+
+        // Index the online files by name.
+        const usedNames: {[name: string]: (CoreWSExternalFile | FileEntry)} = {};
+        const filesToUpload: FileEntry[] = [];
+        files.forEach((file) => {
+            const isOnlineFile = (<CoreWSExternalFile> file).filename && !(<FileEntry> file).name;
+
+            if (isOnlineFile) {
+                usedNames[(<CoreWSExternalFile> file).filename.toLowerCase()] = file;
+            } else {
+                filesToUpload.push(<FileEntry> file);
+            }
+        });
+
+        await Promise.all(filesToUpload.map(async (file) => {
+            // Make sure the file name is unique in the area.
+            const name = this.fileProvider.calculateUniqueName(usedNames, file.name);
+            usedNames[name] = file;
+
+            // Now upload the file.
+            const options = this.getFileUploadOptions(file.toURL(), name, undefined, false, 'draft', itemId);
+
+            await this.uploadFile(file.toURL(), options, undefined, siteId);
+        }));
+    }
+
+    /**
+     * Upload a file to a draft area and return the draft ID.
+     *
+     * If the file is an online file it will be downloaded and then re-uploaded.
+     * If the file is a local file it will not be deleted from the device after upload.
+     *
+     * @param file Online file or local FileEntry.
+     * @param itemId Draft ID to use. Undefined or 0 to create a new draft ID.
+     * @param component The component to set to the downloaded files.
+     * @param componentId An ID to use in conjunction with the component.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with the itemId.
      */
     uploadOrReuploadFile(file: any, itemId?: number, component?: string, componentId?: string | number,
             siteId?: string): Promise<number> {
@@ -502,7 +676,9 @@ export class CoreFileUploaderProvider {
         let promise,
             fileName;
 
-        if (file.filename && !file.name) {
+        const isOnline = file.filename && !file.name;
+
+        if (isOnline) {
             // It's an online file. We need to download it and re-upload it.
             fileName = file.filename;
             promise = this.filepoolProvider.downloadUrl(siteId, file.url || file.fileurl, false, component, componentId,
@@ -517,7 +693,7 @@ export class CoreFileUploaderProvider {
 
         return promise.then((fileEntry) => {
             // Now upload the file.
-            const options = this.getFileUploadOptions(fileEntry.toURL(), fileName, fileEntry.type, true, 'draft', itemId);
+            const options = this.getFileUploadOptions(fileEntry.toURL(), fileName, fileEntry.type, isOnline, 'draft', itemId);
 
             return this.uploadFile(fileEntry.toURL(), options, undefined, siteId).then((result) => {
                 return result.itemid;
@@ -527,14 +703,16 @@ export class CoreFileUploaderProvider {
 
     /**
      * Given a list of files (either online files or local files), upload them to a draft area and return the draft ID.
+     *
      * Online files will be downloaded and then re-uploaded.
+     * Local files are not deleted from the device after upload.
      * If there are no files to upload it will return a fake draft ID (1).
      *
-     * @param {any[]} files List of files.
-     * @param {string} [component] The component to set to the downloaded files.
-     * @param {string|number} [componentId] An ID to use in conjunction with the component.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<number>} Promise resolved with the itemId.
+     * @param files List of files.
+     * @param component The component to set to the downloaded files.
+     * @param componentId An ID to use in conjunction with the component.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with the itemId.
      */
     uploadOrReuploadFiles(files: any[], component?: string, componentId?: string | number, siteId?: string): Promise<number> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
@@ -559,3 +737,5 @@ export class CoreFileUploaderProvider {
         });
     }
 }
+
+export class CoreFileUploader extends makeSingleton(CoreFileUploaderProvider) {}

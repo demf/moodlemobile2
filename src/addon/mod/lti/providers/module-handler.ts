@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,11 +18,12 @@ import { DomSanitizer } from '@angular/platform-browser';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@core/course/providers/module-delegate';
 import { CoreAppProvider } from '@providers/app';
 import { CoreCourseProvider } from '@core/course/providers/course';
-import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreFilepoolProvider } from '@providers/filepool';
 import { CoreSitesProvider } from '@providers/sites';
 import { AddonModLtiIndexComponent } from '../components/index/index';
 import { AddonModLtiProvider } from './lti';
+import { AddonModLtiHelper } from './helper';
+import { CoreConstants } from '@core/constants';
 
 /**
  * Handler to support LTI modules.
@@ -32,9 +33,19 @@ export class AddonModLtiModuleHandler implements CoreCourseModuleHandler {
     name = 'AddonModLti';
     modName = 'lti';
 
+    supportedFeatures = {
+        [CoreConstants.FEATURE_GROUPS]: false,
+        [CoreConstants.FEATURE_GROUPINGS]: false,
+        [CoreConstants.FEATURE_MOD_INTRO]: true,
+        [CoreConstants.FEATURE_COMPLETION_TRACKS_VIEWS]: true,
+        [CoreConstants.FEATURE_GRADE_HAS_GRADE]: true,
+        [CoreConstants.FEATURE_GRADE_OUTCOMES]: true,
+        [CoreConstants.FEATURE_BACKUP_MOODLE2]: true,
+        [CoreConstants.FEATURE_SHOW_DESCRIPTION]: true
+    };
+
     constructor(private appProvider: CoreAppProvider,
             private courseProvider: CoreCourseProvider,
-            private domUtils: CoreDomUtilsProvider,
             private filepoolProvider: CoreFilepoolProvider,
             private sitesProvider: CoreSitesProvider,
             private ltiProvider: AddonModLtiProvider,
@@ -43,7 +54,7 @@ export class AddonModLtiModuleHandler implements CoreCourseModuleHandler {
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return {boolean|Promise<boolean>} Whether or not the handler is enabled on a site level.
+     * @return Whether or not the handler is enabled on a site level.
      */
     isEnabled(): boolean | Promise<boolean> {
         return true;
@@ -52,43 +63,29 @@ export class AddonModLtiModuleHandler implements CoreCourseModuleHandler {
     /**
      * Get the data required to display the module in the course contents view.
      *
-     * @param {any} module The module object.
-     * @param {number} courseId The course ID.
-     * @param {number} sectionId The section ID.
-     * @return {CoreCourseModuleHandlerData} Data to render the module.
+     * @param module The module object.
+     * @param courseId The course ID.
+     * @param sectionId The section ID.
+     * @return Data to render the module.
      */
     getData(module: any, courseId: number, sectionId: number): CoreCourseModuleHandlerData {
         const data: CoreCourseModuleHandlerData = {
-            icon: this.courseProvider.getModuleIconSrc('lti'),
+            icon: this.courseProvider.getModuleIconSrc(this.modName, module.modicon),
             title: module.name,
             class: 'addon-mod_lti-handler',
-            action(event: Event, navCtrl: NavController, module: any, courseId: number, options: NavOptions): void {
-                navCtrl.push('AddonModLtiIndexPage', {module: module, courseId: courseId}, options);
+            action(event: Event, navCtrl: NavController, module: any, courseId: number, options: NavOptions, params?: any): void {
+                const pageParams = {module: module, courseId: courseId};
+                if (params) {
+                    Object.assign(pageParams, params);
+                }
+                navCtrl.push('AddonModLtiIndexPage', pageParams, options);
             },
             buttons: [{
                 icon: 'link',
                 label: 'addon.mod_lti.launchactivity',
                 action: (event: Event, navCtrl: NavController, module: any, courseId: number): void => {
-                    const modal = this.domUtils.showModalLoading();
-
-                    // Get LTI and launch data.
-                    this.ltiProvider.getLti(courseId, module.id).then((ltiData) => {
-                        return this.ltiProvider.getLtiLaunchData(ltiData.id).then((launchData) => {
-                            // "View" LTI.
-                            this.ltiProvider.logView(ltiData.id).then(() => {
-                                this.courseProvider.checkModuleCompletion(courseId, module.completionstatus);
-                            }).catch(() => {
-                                // Ignore errors.
-                            });
-
-                            // Launch LTI.
-                            return this.ltiProvider.launch(launchData.endpoint, launchData.parameters);
-                        });
-                    }).catch((message) => {
-                        this.domUtils.showErrorModalDefault(message, 'addon.mod_lti.errorgetlti', true);
-                    }).finally(() => {
-                        modal.dismiss();
-                    });
+                    // Launch the LTI.
+                    AddonModLtiHelper.instance.getDataAndLaunch(courseId, module);
                 }
             }]
         };
@@ -121,9 +118,9 @@ export class AddonModLtiModuleHandler implements CoreCourseModuleHandler {
      * Get the component to render the module. This is needed to support singleactivity course format.
      * The component returned must implement CoreCourseModuleMainComponent.
      *
-     * @param {any} course The course object.
-     * @param {any} module The module object.
-     * @return {any} The component to use, undefined if not found.
+     * @param course The course object.
+     * @param module The module object.
+     * @return The component to use, undefined if not found.
      */
     getMainComponent(course: any, module: any): any {
         return AddonModLtiIndexComponent;

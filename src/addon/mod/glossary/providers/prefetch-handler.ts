@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,13 +16,17 @@ import { Injectable } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { CoreAppProvider } from '@providers/app';
 import { CoreFilepoolProvider } from '@providers/filepool';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSitesReadingStrategy } from '@providers/sites';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreCourseProvider } from '@core/course/providers/course';
+import { CoreCommentsProvider } from '@core/comments/providers/comments';
 import { CoreCourseActivityPrefetchHandlerBase } from '@core/course/classes/activity-prefetch-handler';
-import { CoreUserProvider } from '@core/user/providers/user';
 import { AddonModGlossaryProvider } from './glossary';
+import { AddonModGlossarySyncProvider } from './sync';
+import { CoreFilterHelperProvider } from '@core/filter/providers/helper';
+import { CorePluginFileDelegate } from '@providers/plugin-file-delegate';
+import { CoreUserProvider } from '@core/user/providers/user';
 
 /**
  * Handler to prefetch forums.
@@ -41,24 +45,30 @@ export class AddonModGlossaryPrefetchHandler extends CoreCourseActivityPrefetchH
             filepoolProvider: CoreFilepoolProvider,
             sitesProvider: CoreSitesProvider,
             domUtils: CoreDomUtilsProvider,
-            private userProvider: CoreUserProvider,
-            private glossaryProvider: AddonModGlossaryProvider) {
+            filterHelper: CoreFilterHelperProvider,
+            pluginFileDelegate: CorePluginFileDelegate,
+            protected glossaryProvider: AddonModGlossaryProvider,
+            protected commentsProvider: CoreCommentsProvider,
+            protected syncProvider: AddonModGlossarySyncProvider,
+            protected userProvider: CoreUserProvider) {
 
-        super(translate, appProvider, utils, courseProvider, filepoolProvider, sitesProvider, domUtils);
+        super(translate, appProvider, utils, courseProvider, filepoolProvider, sitesProvider, domUtils, filterHelper,
+                pluginFileDelegate);
     }
 
     /**
      * Get list of files. If not defined, we'll assume they're in module.contents.
      *
-     * @param {any} module Module.
-     * @param {Number} courseId Course ID the module belongs to.
-     * @param {boolean} [single] True if we're downloading a single module, false if we're downloading a whole section.
-     * @return {Promise<any[]>} Promise resolved with the list of files.
+     * @param module Module.
+     * @param courseId Course ID the module belongs to.
+     * @param single True if we're downloading a single module, false if we're downloading a whole section.
+     * @return Promise resolved with the list of files.
      */
     getFiles(module: any, courseId: number, single?: boolean): Promise<any[]> {
         return this.glossaryProvider.getGlossary(courseId, module.id).then((glossary) => {
-            return this.glossaryProvider.fetchAllEntries(this.glossaryProvider.getEntriesByLetter, [glossary.id, 'ALL'])
-                .then((entries) => {
+            return this.glossaryProvider.fetchAllEntries(this.glossaryProvider.getEntriesByLetter, [glossary.id, 'ALL'], {
+                cmId: module.id,
+            }).then((entries) => {
                     return this.getFilesFromGlossaryAndEntries(module, glossary, entries);
                 });
         }).catch(() => {
@@ -70,17 +80,25 @@ export class AddonModGlossaryPrefetchHandler extends CoreCourseActivityPrefetchH
     /**
      * Get the list of downloadable files. It includes entry embedded files.
      *
-     * @param  {any}   module   Module to get the files.
-     * @param  {any}   glossary Glossary
-     * @param  {any[]} entries  Entries of the Glossary.
-     * @return {any[]}          List of Files.
+     * @param module Module to get the files.
+     * @param glossary Glossary
+     * @param entries Entries of the Glossary.
+     * @return List of Files.
      */
     protected getFilesFromGlossaryAndEntries(module: any, glossary: any, entries: any[]): any[] {
         let files = this.getIntroFilesFromInstance(module, glossary);
+        const getInlineFiles = this.sitesProvider.getCurrentSite() &&
+                this.sitesProvider.getCurrentSite().isVersionGreaterEqualThan('3.2');
+
         // Get entries files.
         entries.forEach((entry) => {
-            files = files.concat(this.domUtils.extractDownloadableFilesFromHtmlAsFakeFileObjects(entry.definition));
             files = files.concat(entry.attachments);
+
+            if (getInlineFiles && entry.definitioninlinefiles && entry.definitioninlinefiles.length) {
+                files = files.concat(entry.definitioninlinefiles);
+            } else if (entry.definition && !getInlineFiles) {
+                files = files.concat(this.filepoolProvider.extractDownloadableFilesFromHtmlAsFakeFileObjects(entry.definition));
+            }
         });
 
         return files;
@@ -89,9 +107,9 @@ export class AddonModGlossaryPrefetchHandler extends CoreCourseActivityPrefetchH
     /**
      * Invalidate the prefetched content.
      *
-     * @param {number} moduleId The module ID.
-     * @param {number} courseId The course ID the module belongs to.
-     * @return {Promise<any>} Promise resolved when the data is invalidated.
+     * @param moduleId The module ID.
+     * @param courseId The course ID the module belongs to.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateContent(moduleId: number, courseId: number): Promise<any> {
         return this.glossaryProvider.invalidateContent(moduleId, courseId);
@@ -100,11 +118,11 @@ export class AddonModGlossaryPrefetchHandler extends CoreCourseActivityPrefetchH
     /**
      * Prefetch a module.
      *
-     * @param {any} module Module.
-     * @param {number} courseId Course ID the module belongs to.
-     * @param {boolean} [single] True if we're downloading a single module, false if we're downloading a whole section.
-     * @param {string} [dirPath] Path of the directory where to store all the content files.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param module Module.
+     * @param courseId Course ID the module belongs to.
+     * @param single True if we're downloading a single module, false if we're downloading a whole section.
+     * @param dirPath Path of the directory where to store all the content files.
+     * @return Promise resolved when done.
      */
     prefetch(module: any, courseId?: number, single?: boolean, dirPath?: string): Promise<any> {
         return this.prefetchPackage(module, courseId, single, this.prefetchGlossary.bind(this));
@@ -113,17 +131,23 @@ export class AddonModGlossaryPrefetchHandler extends CoreCourseActivityPrefetchH
     /**
      * Prefetch a glossary.
      *
-     * @param {any} module The module object returned by WS.
-     * @param {number} courseId Course ID the module belongs to.
-     * @param {boolean} single True if we're downloading a single module, false if we're downloading a whole section.
-     * @param {string} siteId Site ID.
-     * @return {Promise<any>} Promise resolved when done.
+     * @param module The module object returned by WS.
+     * @param courseId Course ID the module belongs to.
+     * @param single True if we're downloading a single module, false if we're downloading a whole section.
+     * @param siteId Site ID.
+     * @return Promise resolved when done.
      */
     protected prefetchGlossary(module: any, courseId: number, single: boolean, siteId: string): Promise<any> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
 
+        const options = {
+            cmId: module.id,
+            readingStrategy: CoreSitesReadingStrategy.OnlyNetwork,
+            siteId,
+        };
+
         // Prefetch the glossary data.
-        return this.glossaryProvider.getGlossary(courseId, module.id, siteId).then((glossary) => {
+        return this.glossaryProvider.getGlossary(courseId, module.id, {siteId}).then((glossary) => {
             const promises = [];
 
             glossary.browsemodes.forEach((mode) => {
@@ -132,44 +156,76 @@ export class AddonModGlossaryPrefetchHandler extends CoreCourseActivityPrefetchH
                         break;
                     case 'cat': // Not implemented.
                         promises.push(this.glossaryProvider.fetchAllEntries(this.glossaryProvider.getEntriesByCategory,
-                            [glossary.id, AddonModGlossaryProvider.SHOW_ALL_CATERGORIES], false, siteId));
+                            [glossary.id, AddonModGlossaryProvider.SHOW_ALL_CATEGORIES], options));
                         break;
                     case 'date':
                         promises.push(this.glossaryProvider.fetchAllEntries(this.glossaryProvider.getEntriesByDate,
-                            [glossary.id, 'CREATION', 'DESC'], false, siteId));
+                            [glossary.id, 'CREATION', 'DESC'], options));
                         promises.push(this.glossaryProvider.fetchAllEntries(this.glossaryProvider.getEntriesByDate,
-                            [glossary.id, 'UPDATE', 'DESC'], false, siteId));
+                            [glossary.id, 'UPDATE', 'DESC'], options));
                         break;
                     case 'author':
                         promises.push(this.glossaryProvider.fetchAllEntries(this.glossaryProvider.getEntriesByAuthor,
-                            [glossary.id, 'ALL', 'LASTNAME', 'ASC'], false, siteId));
+                            [glossary.id, 'ALL', 'LASTNAME', 'ASC'], options));
                         break;
                     default:
                 }
             });
 
             // Fetch all entries to get information from.
-            promises.push(this.glossaryProvider.fetchAllEntries(this.glossaryProvider.getEntriesByLetter,
-                    [glossary.id, 'ALL'], false, siteId).then((entries) => {
+            promises.push(this.glossaryProvider.fetchAllEntries(this.glossaryProvider.getEntriesByLetter, [glossary.id, 'ALL'],
+                    options).then((entries) => {
                 const promises = [];
-                const userIds = [];
+                const commentsEnabled = !this.commentsProvider.areCommentsDisabledInSite();
 
-                // Fetch user avatars.
                 entries.forEach((entry) => {
-                    // Fetch individual entries.
-                    promises.push(this.glossaryProvider.getEntry(entry.id, siteId));
+                    // Don't fetch individual entries, it's too many WS calls.
 
-                    userIds.push(entry.userid);
+                    if (glossary.allowcomments && commentsEnabled) {
+                        promises.push(this.commentsProvider.getComments('module', glossary.coursemodule, 'mod_glossary', entry.id,
+                            'glossary_entry', 0, siteId));
+                    }
                 });
-
-                // Prefetch user profiles.
-                promises.push(this.userProvider.prefetchProfiles(userIds, courseId, siteId));
 
                 const files = this.getFilesFromGlossaryAndEntries(module, glossary, entries);
                 promises.push(this.filepoolProvider.addFilesToQueue(siteId, files, this.component, module.id));
 
+                // Prefetch user avatars.
+                promises.push(this.userProvider.prefetchUserAvatars(entries, 'userpictureurl', siteId));
+
                 return Promise.all(promises);
             }));
+
+            // Get all categories.
+            promises.push(this.glossaryProvider.getAllCategories(glossary.id, options));
+
+            // Prefetch data for link handlers.
+            promises.push(this.courseProvider.getModuleBasicInfo(module.id, siteId));
+            promises.push(this.courseProvider.getModuleBasicInfoByInstance(glossary.id, 'glossary', siteId));
+
+            return Promise.all(promises);
+        });
+    }
+
+    /**
+     * Sync a module.
+     *
+     * @param module Module.
+     * @param courseId Course ID the module belongs to
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when done.
+     */
+    sync(module: any, courseId: number, siteId?: any): Promise<any> {
+        const promises = [
+            this.syncProvider.syncGlossaryEntries(module.instance, undefined, siteId),
+            this.syncProvider.syncRatings(module.id, undefined, siteId)
+        ];
+
+        return Promise.all(promises).then((results) => {
+            return results.reduce((a, b) => ({
+                updated: a.updated || b.updated,
+                warnings: (a.warnings || []).concat(b.warnings || []),
+            }), {updated: false});
         });
     }
 }

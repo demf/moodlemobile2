@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,8 +30,8 @@ import { Subscription } from 'rxjs';
  *
  * Accepts the following params:
  *
- * @param {string|boolean} [when] When the split-pane should be shown. Can be a CSS media query expression, or a shortcut
- * expression. Can also be a boolean expression. Check split-pane component documentation for more information.
+ * @param when When the split-pane should be shown. Can be a CSS media query expression, or a shortcut
+ *             expression. Can also be a boolean expression. Check split-pane component documentation for more information.
  *
  * Example:
  *
@@ -49,17 +49,20 @@ export class CoreSplitViewComponent implements OnInit, OnDestroy {
     @ViewChild('menu') menu: Menu;
     @Input() when?: string | boolean = 'md';
 
-    protected isEnabled = false;
+    protected VIEW_EVENTS = ['willEnter', 'didEnter', 'willLeave', 'willLeave'];
+
+    protected isEnabled;
     protected masterPageName = '';
     protected masterPageIndex = 0;
     protected loadDetailPage: any = false;
     protected element: HTMLElement; // Current element.
-    protected detailsDidEnterSubscription: Subscription;
     protected masterCanLeaveOverridden = false;
     protected originalMasterCanLeave: Function;
     protected ignoreSplitChanged = false;
     protected audioCaptureSubscription: Subscription;
     protected languageChangedSubscription: Subscription;
+    protected pushOngoing: boolean;
+    protected viewEventsSubscriptions: Subscription[] = [];
 
     // Empty placeholder for the 'detail' page.
     detailPage: any = null;
@@ -91,13 +94,13 @@ export class CoreSplitViewComponent implements OnInit, OnDestroy {
         this.masterPageIndex = this.masterNav.indexOf(this.masterNav.getActive());
         this.emptyDetails();
 
-        this.handleCanLeave();
+        this.handleViewEvents();
     }
 
     /**
      * Get the details NavController. If split view is not enabled, it will return the master nav.
      *
-     * @return {NavController} Details NavController.
+     * @return Details NavController.
      */
     getDetailsNav(): NavController {
         if (this.isEnabled) {
@@ -110,7 +113,7 @@ export class CoreSplitViewComponent implements OnInit, OnDestroy {
     /**
      * Get the master NavController.
      *
-     * @return {NavController} Master NavController.
+     * @return Master NavController.
      */
     getMasterNav(): NavController {
         return this.masterNav;
@@ -122,7 +125,7 @@ export class CoreSplitViewComponent implements OnInit, OnDestroy {
      */
     handleCanLeave(): void {
         // Listen for the didEnter event on the details nav to detect everytime a page is loaded.
-        this.detailsDidEnterSubscription = this.detailNav.viewDidEnter.subscribe((detailsViewController: ViewController) => {
+        this.viewEventsSubscriptions.push(this.detailNav.viewDidEnter.subscribe((detailsViewController: ViewController) => {
             if (!this.isOn()) {
                 return;
             }
@@ -165,33 +168,73 @@ export class CoreSplitViewComponent implements OnInit, OnDestroy {
                     });
                 };
             }
-        });
+        }));
+    }
+
+    /**
+     * Handle Ionic Views lifecycle events in the details page.
+     */
+    handleViewEvents(): void {
+        // Handle affected view events except ionViewCanLeave, propagating them to the details view.
+        const masterActiveView = this.masterNav.getActive();
+
+        for (const i in this.VIEW_EVENTS) {
+            const viewEvent = this.VIEW_EVENTS[i];
+
+            this.viewEventsSubscriptions.push(masterActiveView[viewEvent].subscribe(() => {
+                if (!this.isOn()) {
+                    return;
+                }
+
+                const activeView = this.detailNav.getActive();
+                activeView && activeView[`_${viewEvent}`]();
+            }));
+        }
+
+        this.handleCanLeave();
     }
 
     /**
      * Check if both panels are shown. It depends on screen width.
      *
-     * @return {boolean} If split view is enabled.
+     * @return If split view is enabled.
      */
     isOn(): boolean {
-        return this.isEnabled;
+        return !!this.isEnabled;
     }
 
     /**
      * Push a page to the navigation stack. It will decide where to load it depending on the size of the screen.
      *
-     * @param {any} page   The component class or deeplink name you want to push onto the navigation stack.
-     * @param {any} params Any NavParams you want to pass along to the next view.
+     * @param page The component class or deeplink name you want to push onto the navigation stack.
+     * @param params Any NavParams you want to pass along to the next view.
+     * @param retrying Whether it's retrying.
      */
-    push(page: any, params?: any): void {
-        if (this.isEnabled) {
-            this.detailNav.setRoot(page, params);
-        } else {
-            this.loadDetailPage = {
-                component: page,
-                data: params
-            };
-            this.masterNav.push(page, params);
+    push(page: any, params?: any, retrying?: boolean): void {
+        // Check there's no ongoing push.
+        if (!this.pushOngoing) {
+            if (typeof this.isEnabled == 'undefined' && !retrying) {
+                // Hasn't calculated if it's enabled yet. Wait a bit and try again.
+                setTimeout(() => {
+                    this.push(page, params, true);
+                }, 200);
+            } else {
+                this.pushOngoing = true;
+                let promise;
+
+                if (this.isEnabled) {
+                    promise = this.detailNav.setRoot(page, params);
+                } else {
+                    this.loadDetailPage = {
+                        component: page,
+                        data: params
+                    };
+                    promise = this.masterNav.push(page, params);
+                }
+                promise.finally(() =>  {
+                    this.pushOngoing = false;
+                });
+            }
         }
     }
 
@@ -206,7 +249,7 @@ export class CoreSplitViewComponent implements OnInit, OnDestroy {
     /**
      * Splitpanel visibility has changed.
      *
-     * @param {Boolean} isOn If it fits both panels at the same time.
+     * @param isOn If it fits both panels at the same time.
      */
     onSplitPaneChanged(isOn: boolean): void {
         if (this.ignoreSplitChanged) {
@@ -256,8 +299,10 @@ export class CoreSplitViewComponent implements OnInit, OnDestroy {
      * Component being destroyed.
      */
     ngOnDestroy(): void {
-        this.detailsDidEnterSubscription && this.detailsDidEnterSubscription.unsubscribe();
         this.audioCaptureSubscription.unsubscribe();
         this.languageChangedSubscription.unsubscribe();
+        for (const i in this.viewEventsSubscriptions) {
+            this.viewEventsSubscriptions[i].unsubscribe();
+        }
     }
 }

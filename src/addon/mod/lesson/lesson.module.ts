@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ import { CoreCronDelegate } from '@providers/cron';
 import { CoreCourseModuleDelegate } from '@core/course/providers/module-delegate';
 import { CoreCourseModulePrefetchDelegate } from '@core/course/providers/module-prefetch-delegate';
 import { CoreContentLinksDelegate } from '@core/contentlinks/providers/delegate';
+import { CorePushNotificationsDelegate } from '@core/pushnotifications/providers/delegate';
 import { AddonModLessonComponentsModule } from './components/components.module';
 import { AddonModLessonProvider } from './providers/lesson';
 import { AddonModLessonOfflineProvider } from './providers/lesson-offline';
@@ -28,7 +29,8 @@ import { AddonModLessonSyncCronHandler } from './providers/sync-cron-handler';
 import { AddonModLessonIndexLinkHandler } from './providers/index-link-handler';
 import { AddonModLessonGradeLinkHandler } from './providers/grade-link-handler';
 import { AddonModLessonReportLinkHandler } from './providers/report-link-handler';
-import { CoreUpdateManagerProvider } from '@providers/update-manager';
+import { AddonModLessonListLinkHandler } from './providers/list-link-handler';
+import { AddonModLessonPushClickHandler } from './providers/push-click-handler';
 
 // List of providers (without handlers).
 export const ADDON_MOD_LESSON_PROVIDERS: any[] = [
@@ -54,7 +56,9 @@ export const ADDON_MOD_LESSON_PROVIDERS: any[] = [
         AddonModLessonSyncCronHandler,
         AddonModLessonIndexLinkHandler,
         AddonModLessonGradeLinkHandler,
-        AddonModLessonReportLinkHandler
+        AddonModLessonReportLinkHandler,
+        AddonModLessonListLinkHandler,
+        AddonModLessonPushClickHandler
     ]
 })
 export class AddonModLessonModule {
@@ -62,7 +66,9 @@ export class AddonModLessonModule {
             prefetchDelegate: CoreCourseModulePrefetchDelegate, prefetchHandler: AddonModLessonPrefetchHandler,
             cronDelegate: CoreCronDelegate, syncHandler: AddonModLessonSyncCronHandler, linksDelegate: CoreContentLinksDelegate,
             indexHandler: AddonModLessonIndexLinkHandler, gradeHandler: AddonModLessonGradeLinkHandler,
-            reportHandler: AddonModLessonReportLinkHandler, updateManager: CoreUpdateManagerProvider) {
+            reportHandler: AddonModLessonReportLinkHandler,
+            listLinkHandler: AddonModLessonListLinkHandler, pushNotificationsDelegate: CorePushNotificationsDelegate,
+            pushClickHandler: AddonModLessonPushClickHandler) {
 
         moduleDelegate.registerHandler(moduleHandler);
         prefetchDelegate.registerHandler(prefetchHandler);
@@ -70,71 +76,7 @@ export class AddonModLessonModule {
         linksDelegate.registerHandler(indexHandler);
         linksDelegate.registerHandler(gradeHandler);
         linksDelegate.registerHandler(reportHandler);
-
-        // Allow migrating the tables from the old app to the new schema.
-        updateManager.registerSiteTablesMigration([
-            {
-                name: 'mma_mod_lesson_password',
-                newName: AddonModLessonProvider.PASSWORD_TABLE,
-                fields: [
-                    {
-                        name: 'id',
-                        newName: 'lessonid'
-                    }
-                ]
-            },
-            {
-                name: 'mma_mod_lesson_retakes',
-                newName: AddonModLessonOfflineProvider.RETAKES_TABLE,
-                fields: [
-                    {
-                        name: 'finished',
-                        type: 'boolean'
-                    },
-                    {
-                        name: 'outoftime',
-                        type: 'boolean'
-                    }
-                ]
-            },
-            {
-                name: 'mma_mod_lesson_page_attempts',
-                newName: AddonModLessonOfflineProvider.PAGE_ATTEMPTS_TABLE,
-                fields: [
-                    {
-                        name: 'lessonAndPage',
-                        delete: true
-                    },
-                    {
-                        name: 'lessonAndRetake',
-                        delete: true
-                    },
-                    {
-                        name: 'lessonAndRetakeAndType',
-                        delete: true
-                    },
-                    {
-                        name: 'lessonAndRetakeAndPage',
-                        delete: true
-                    },
-                    {
-                        name: 'data',
-                        type: 'object'
-                    },
-                    {
-                        name: 'correct',
-                        type: 'boolean'
-                    },
-                    {
-                        name: 'userAnswer',
-                        type: 'object'
-                    }
-                ]
-            },
-            {
-                name: 'mma_mod_lesson_retakes_finished_sync',
-                newName: AddonModLessonSyncProvider.RETAKES_FINISHED_TABLE
-            }
-        ]);
+        linksDelegate.registerHandler(listLinkHandler);
+        pushNotificationsDelegate.registerClickHandler(pushClickHandler);
     }
 }

@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ import { Component, Input, OnInit, OnDestroy, ElementRef, Optional } from '@angu
 import { PopoverController } from 'ionic-angular';
 import { TranslateService } from '@ngx-translate/core';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
+import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreContextMenuItemComponent } from './context-menu-item';
 import { CoreContextMenuPopoverComponent } from './context-menu-popover';
 import { CoreTabComponent } from '@components/tabs/tab';
@@ -30,18 +31,20 @@ import { Subject } from 'rxjs';
 })
 export class CoreContextMenuComponent implements OnInit, OnDestroy {
     @Input() icon?: string; // Icon to be shown on the navigation bar. Default: Kebab menu icon.
-    @Input() title?: string; // Aria label and text to be shown on the top of the popover.
+    @Input() title?: string; // Text to be shown on the top of the popover.
+    @Input('aria-label') ariaLabel?: string; // Aria label to be shown on the top of the popover.
 
-    hideMenu: boolean;
-    ariaLabel: string;
+    hideMenu = true; // It will be unhidden when items are added.
+    expanded = false;
     protected items: CoreContextMenuItemComponent[] = [];
     protected itemsMovedToParent: CoreContextMenuItemComponent[] = [];
     protected itemsChangedStream: Subject<void>; // Stream to update the hideMenu boolean when items change.
     protected instanceId: string;
     protected parentContextMenu: CoreContextMenuComponent;
+    protected uniqueId: string;
 
     constructor(private translate: TranslateService, private popoverCtrl: PopoverController, elementRef: ElementRef,
-            private domUtils: CoreDomUtilsProvider, @Optional() public coreTab: CoreTabComponent) {
+            private domUtils: CoreDomUtilsProvider, @Optional() public coreTab: CoreTabComponent, utils: CoreUtilsProvider) {
         // Create the stream and subscribe to it. We ignore successive changes during 250ms.
         this.itemsChangedStream = new Subject<void>();
         this.itemsChangedStream.auditTime(250).subscribe(() => {
@@ -56,6 +59,9 @@ export class CoreContextMenuComponent implements OnInit, OnDestroy {
             });
         });
 
+        // Calculate the unique ID.
+        this.uniqueId = 'core-context-menu-' + utils.getUniqueId('CoreContextMenuComponent');
+
         this.instanceId = this.domUtils.storeInstanceByElement(elementRef.nativeElement, this);
     }
 
@@ -64,13 +70,13 @@ export class CoreContextMenuComponent implements OnInit, OnDestroy {
      */
     ngOnInit(): void {
         this.icon = this.icon || 'more';
-        this.ariaLabel = this.title || this.translate.instant('core.info');
+        this.ariaLabel = this.ariaLabel || this.title || this.translate.instant('core.displayoptions');
     }
 
     /**
      * Add a context menu item.
      *
-     * @param {CoreContextMenuItemComponent} item The item to add.
+     * @param item The item to add.
      */
     addItem(item: CoreContextMenuItemComponent): void {
         if (this.parentContextMenu) {
@@ -102,7 +108,7 @@ export class CoreContextMenuComponent implements OnInit, OnDestroy {
      * Merge the current context menu with the one passed as parameter. All the items in this menu will be moved to the
      * one passed as parameter.
      *
-     * @param {CoreContextMenuComponent} contextMenu The context menu where to move the items.
+     * @param contextMenu The context menu where to move the items.
      */
     mergeContextMenus(contextMenu: CoreContextMenuComponent): void {
         this.parentContextMenu = contextMenu;
@@ -122,7 +128,7 @@ export class CoreContextMenuComponent implements OnInit, OnDestroy {
     /**
      * Remove an item from the context menu.
      *
-     * @param {CoreContextMenuItemComponent} item The item to remove.
+     * @param item The item to remove.
      */
     removeItem(item: CoreContextMenuItemComponent): void {
         if (this.parentContextMenu) {
@@ -167,13 +173,26 @@ export class CoreContextMenuComponent implements OnInit, OnDestroy {
     /**
      * Show the context menu.
      *
-     * @param {MouseEvent} event Event.
+     * @param event Event.
      */
     showContextMenu(event: MouseEvent): void {
-        const popover = this.popoverCtrl.create(CoreContextMenuPopoverComponent, { title: this.title, items: this.items });
-        popover.present({
-            ev: event
-        });
+        if (!this.expanded) {
+            const popover = this.popoverCtrl.create(CoreContextMenuPopoverComponent,
+                { title: this.title, items: this.items, id: this.uniqueId, showBackdrop: true });
+
+            popover.onDidDismiss((item: CoreContextMenuItemComponent) => {
+                this.expanded = false;
+
+                if (item) {
+                    item.onClosed.emit();
+                }
+            });
+            popover.present({
+                ev: event
+            });
+
+            this.expanded = true;
+        }
     }
 
     /**

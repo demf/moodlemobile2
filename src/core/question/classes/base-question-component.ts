@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Input, Output, EventEmitter, Injector } from '@angular/core';
+import { Input, Output, EventEmitter, Injector, ElementRef } from '@angular/core';
 import { CoreLoggerProvider } from '@providers/logger';
+import { CoreSites } from '@providers/sites';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
+import { CoreUrlUtils } from '@providers/utils/url';
 import { CoreQuestionHelperProvider } from '@core/question/providers/helper';
 
 /**
@@ -27,6 +29,10 @@ export class CoreQuestionBaseComponent {
     @Input() componentId: number; // ID of the component the question belongs to.
     @Input() attemptId: number; // Attempt ID.
     @Input() offlineEnabled?: boolean | string; // Whether the question can be answered in offline.
+    @Input() contextLevel?: string; // The context level.
+    @Input() contextInstanceId?: number; // The instance ID related to the context.
+    @Input() courseId?: number; // The course the question belongs to (if any).
+    @Input() review?: boolean; // Whether the user is in review mode.
     @Output() buttonClicked: EventEmitter<any>; // Should emit an event when a behaviour button is clicked.
     @Output() onAbort: EventEmitter<void>; // Should emit an event if the question should be aborted.
 
@@ -34,6 +40,7 @@ export class CoreQuestionBaseComponent {
     protected questionHelper: CoreQuestionHelperProvider;
     protected domUtils: CoreDomUtilsProvider;
     protected textUtils: CoreTextUtilsProvider;
+    protected realElement: HTMLElement;
 
     constructor(logger: CoreLoggerProvider, logName: string, protected injector: Injector) {
         this.logger = logger.getInstance(logName);
@@ -42,12 +49,13 @@ export class CoreQuestionBaseComponent {
         this.questionHelper = injector.get(CoreQuestionHelperProvider);
         this.domUtils = injector.get(CoreDomUtilsProvider);
         this.textUtils = injector.get(CoreTextUtilsProvider);
+        this.realElement = injector.get(ElementRef).nativeElement;
     }
 
     /**
      * Initialize a question component of type calculated or calculated simple.
      *
-     * @return {void|HTMLElement} Element containing the question HTML, void if the data is not valid.
+     * @return Element containing the question HTML, void if the data is not valid.
      */
     initCalculatedComponent(): void | HTMLElement {
         // Treat the input text first.
@@ -100,9 +108,13 @@ export class CoreQuestionBaseComponent {
                 this.question.select = selectModel;
 
                 // Check which one should be displayed first: the select or the input.
-                const input = questionEl.querySelector('input[type="text"][name*=answer]');
-                this.question.selectFirst =
-                        questionEl.innerHTML.indexOf(input.outerHTML) > questionEl.innerHTML.indexOf(select.outerHTML);
+                if (this.question.settings && this.question.settings.unitsleft !== null) {
+                    this.question.selectFirst = this.question.settings.unitsleft == '1';
+                } else {
+                    const input = questionEl.querySelector('input[type="text"][name*=answer]');
+                    this.question.selectFirst =
+                            questionEl.innerHTML.indexOf(input.outerHTML) > questionEl.innerHTML.indexOf(select.outerHTML);
+                }
 
                 return questionEl;
             }
@@ -154,16 +166,22 @@ export class CoreQuestionBaseComponent {
             }
 
             // Check which one should be displayed first: the options or the input.
-            const input = questionEl.querySelector('input[type="text"][name*=answer]');
-            this.question.optionsFirst =
-                    questionEl.innerHTML.indexOf(input.outerHTML) > questionEl.innerHTML.indexOf(radios[0].outerHTML);
+            if (this.question.settings && this.question.settings.unitsleft !== null) {
+                this.question.optionsFirst = this.question.settings.unitsleft == '1';
+            } else {
+                const input = questionEl.querySelector('input[type="text"][name*=answer]');
+                this.question.optionsFirst =
+                        questionEl.innerHTML.indexOf(input.outerHTML) > questionEl.innerHTML.indexOf(radios[0].outerHTML);
+            }
+
+            return questionEl;
         }
     }
 
     /**
      * Initialize the component and the question text.
      *
-     * @return {void|HTMLElement} Element containing the question HTML, void if the data is not valid.
+     * @return Element containing the question HTML, void if the data is not valid.
      */
     initComponent(): void | HTMLElement {
         if (!this.question) {
@@ -171,6 +189,8 @@ export class CoreQuestionBaseComponent {
 
             return this.questionHelper.showComponentError(this.onAbort);
         }
+
+        this.realElement.classList.add('core-question-container');
 
         const element = this.domUtils.convertToElement(this.question.html);
 
@@ -188,50 +208,125 @@ export class CoreQuestionBaseComponent {
     /**
      * Initialize a question component of type essay.
      *
-     * @return {void|HTMLElement} Element containing the question HTML, void if the data is not valid.
+     * @param review Whether we're in review mode.
+     * @return Element containing the question HTML, void if the data is not valid.
      */
-    initEssayComponent(): void | HTMLElement {
+    initEssayComponent(review?: boolean): void | HTMLElement {
         const questionEl = this.initComponent();
 
-        if (questionEl) {
-            // First search the textarea.
-            const textarea = <HTMLTextAreaElement> questionEl.querySelector('textarea[name*=_answer]');
+        if (!questionEl) {
+            return;
+        }
+
+        const answerDraftIdInput = <HTMLInputElement> questionEl.querySelector('input[name*="_answer:itemid"]');
+
+        if (this.question.settings) {
+            this.question.allowsAttachments = this.question.settings.attachments != '0';
+            this.question.allowsAnswerFiles = this.question.settings.responseformat == 'editorfilepicker';
+            this.question.isMonospaced = this.question.settings.responseformat == 'monospaced';
+            this.question.isPlainText = this.question.isMonospaced || this.question.settings.responseformat == 'plain';
+            this.question.hasInlineText = this.question.settings.responseformat != 'noinline';
+        } else {
             this.question.allowsAttachments = !!questionEl.querySelector('div[id*=filemanager]');
+            this.question.allowsAnswerFiles = !!answerDraftIdInput;
             this.question.isMonospaced = !!questionEl.querySelector('.qtype_essay_monospaced');
             this.question.isPlainText = this.question.isMonospaced || !!questionEl.querySelector('.qtype_essay_plain');
-            this.question.hasDraftFiles = this.questionHelper.hasDraftFileUrls(questionEl.innerHTML);
+        }
 
-            if (!textarea) {
-                // Textarea not found, we might be in review. Search the answer and the attachments.
-                this.question.answer = this.domUtils.getContentsOfElement(questionEl, '.qtype_essay_response');
+        if (review) {
+            // Search the answer and the attachments.
+            this.question.answer = this.domUtils.getContentsOfElement(questionEl, '.qtype_essay_response');
+
+            if (this.question.settings) {
+                this.question.attachments = Array.from(this.questionHelper.getResponseFileAreaFiles(this.question, 'attachments'));
+            } else {
                 this.question.attachments = this.questionHelper.getQuestionAttachmentsFromHtml(
                         this.domUtils.getContentsOfElement(questionEl, '.attachments'));
-            } else {
-                // Textarea found.
-                const input = <HTMLInputElement> questionEl.querySelector('input[type="hidden"][name*=answerformat]'),
-                    content = textarea.innerHTML;
+            }
 
-                this.question.textarea = {
-                    id: textarea.id,
-                    name: textarea.name,
-                    text: content ? this.textUtils.decodeHTML(content) : ''
+            return;
+        }
+
+        const textarea = <HTMLTextAreaElement> questionEl.querySelector('textarea[name*=_answer]');
+
+        this.question.hasDraftFiles = this.question.allowsAnswerFiles &&
+                this.questionHelper.hasDraftFileUrls(questionEl.innerHTML);
+
+        if (!textarea && (this.question.hasInlineText || !this.question.allowsAttachments)) {
+            // Textarea not found, we might be in review. Search the answer and the attachments.
+            this.question.answer = this.domUtils.getContentsOfElement(questionEl, '.qtype_essay_response');
+            this.question.attachments = this.questionHelper.getQuestionAttachmentsFromHtml(
+                    this.domUtils.getContentsOfElement(questionEl, '.attachments'));
+
+            return questionEl;
+        }
+
+        if (textarea) {
+            const input = <HTMLInputElement> questionEl.querySelector('input[type="hidden"][name*=answerformat]');
+            let content = this.textUtils.decodeHTML(textarea.innerHTML || '');
+
+            if (this.question.hasDraftFiles && this.question.responsefileareas) {
+                content = this.textUtils.replaceDraftfileUrls(CoreSites.instance.getCurrentSite().getURL(), content,
+                        this.questionHelper.getResponseFileAreaFiles(this.question, 'answer')).text;
+            }
+
+            this.question.textarea = {
+                id: textarea.id,
+                name: textarea.name,
+                text: content,
+            };
+
+            if (input) {
+                this.question.formatInput = {
+                    name: input.name,
+                    value: input.value
                 };
-
-                if (input) {
-                    this.question.formatInput = {
-                        name: input.name,
-                        value: input.value
-                    };
-                }
             }
         }
+
+        if (answerDraftIdInput) {
+            this.question.answerDraftIdInput = {
+                name: answerDraftIdInput.name,
+                value: Number(answerDraftIdInput.value),
+            };
+        }
+
+        if (this.question.allowsAttachments) {
+            const attachmentsInput = <HTMLInputElement> questionEl.querySelector('.attachments input[name*=_attachments]');
+            const objectElement = <HTMLObjectElement> questionEl.querySelector('.attachments object');
+            const fileManagerUrl = objectElement && objectElement.data;
+
+            if (attachmentsInput) {
+                this.question.attachmentsDraftIdInput = {
+                    name: attachmentsInput.name,
+                    value: Number(attachmentsInput.value),
+                };
+            }
+
+            if (this.question.settings) {
+                this.question.attachmentsMaxFiles = Number(this.question.settings.attachments);
+                this.question.attachmentsAcceptedTypes = this.question.settings.filetypeslist &&
+                    this.question.settings.filetypeslist.join(',');
+            }
+
+            if (fileManagerUrl) {
+                const params = CoreUrlUtils.instance.extractUrlParams(fileManagerUrl);
+                const maxBytes = Number(params.maxbytes);
+                const areaMaxBytes = Number(params.areamaxbytes);
+
+                this.question.attachmentsMaxBytes = maxBytes === -1 || areaMaxBytes === -1 ?
+                        Math.max(maxBytes, areaMaxBytes) : Math.min(maxBytes, areaMaxBytes);
+            }
+        }
+
+        return questionEl;
     }
 
     /**
      * Initialize a question component that uses the original question text with some basic treatment.
      *
-     * @param {string} contentSelector The selector to find the question content (text).
-     * @return {void|HTMLElement} Element containing the question HTML, void if the data is not valid.
+     * @param contentSelector The selector to find the question content (text).
+     * @return Element containing the question HTML, void if the data is not valid.
      */
     initOriginalTextComponent(contentSelector: string): void | HTMLElement {
         if (!this.question) {
@@ -263,12 +358,14 @@ export class CoreQuestionBaseComponent {
 
         // Set the question text.
         this.question.text = content.innerHTML;
+
+        return element;
     }
 
     /**
      * Initialize a question component that has an input of type "text".
      *
-     * @return {void|HTMLElement} Element containing the question HTML, void if the data is not valid.
+     * @return Element containing the question HTML, void if the data is not valid.
      */
     initInputTextComponent(): void | HTMLElement {
         const questionEl = this.initComponent();
@@ -285,18 +382,37 @@ export class CoreQuestionBaseComponent {
                 id: input.id,
                 name: input.name,
                 value: input.value,
-                readOnly: input.readOnly
+                readOnly: input.readOnly,
+                isInline: !!this.domUtils.closest(input, '.qtext') // The answer can be inside the question text.
             };
 
             // Check if question is marked as correct.
             if (input.classList.contains('incorrect')) {
                 this.question.input.correctClass = 'core-question-incorrect';
+                this.question.input.correctIcon = 'fa-remove';
+                this.question.input.correctIconColor = 'danger';
             } else if (input.classList.contains('correct')) {
                 this.question.input.correctClass = 'core-question-correct';
+                this.question.input.correctIcon = 'fa-check';
+                this.question.input.correctIconColor = 'success';
             } else if (input.classList.contains('partiallycorrect')) {
                 this.question.input.correctClass = 'core-question-partiallycorrect';
+                this.question.input.correctIcon = 'fa-check-square';
+                this.question.input.correctIconColor = 'warning';
             } else {
                 this.question.input.correctClass = '';
+                this.question.input.correctIcon = '';
+                this.question.input.correctIconColor = '';
+            }
+
+            if (this.question.input.isInline) {
+                // Handle correct/incorrect classes and icons.
+                const content = <HTMLElement> questionEl.querySelector('.qtext');
+
+                this.questionHelper.replaceCorrectnessClasses(content);
+                this.questionHelper.treatCorrectnessIcons(content);
+
+                this.question.text = content.innerHTML;
             }
         }
 
@@ -306,7 +422,7 @@ export class CoreQuestionBaseComponent {
     /**
      * Initialize a question component with a "match" behaviour.
      *
-     * @return {void|HTMLElement} Element containing the question HTML, void if the data is not valid.
+     * @return Element containing the question HTML, void if the data is not valid.
      */
     initMatchComponent(): void | HTMLElement {
         const questionEl = this.initComponent();
@@ -398,7 +514,7 @@ export class CoreQuestionBaseComponent {
     /**
      * Initialize a question component with a multiple choice (checkbox) or single choice (radio).
      *
-     * @return {void|HTMLElement} Element containing the question HTML, void if the data is not valid.
+     * @return Element containing the question HTML, void if the data is not valid.
      */
     initMultichoiceComponent(): void | HTMLElement {
         const questionEl = this.initComponent();
@@ -425,6 +541,8 @@ export class CoreQuestionBaseComponent {
 
             this.question.options = [];
 
+            this.question.disabled = true;
+
             for (const i in options) {
                 const element = options[i],
                     option: any = {
@@ -436,10 +554,23 @@ export class CoreQuestionBaseComponent {
                     },
                     parent = element.parentElement;
 
+                if (option.value == '-1') {
+                    // It's the clear choice option, ignore it.
+                    continue;
+                }
+
                 this.question.optionsName = option.name;
 
-                // Get the label with the question text.
-                const label = questionEl.querySelector('label[for="' + option.id + '"]');
+                this.question.disabled = this.question.disabled && element.disabled;
+
+                // Get the label with the question text. Try the new format first.
+                const labelId = element.getAttribute('aria-labelledby');
+                let label = labelId ? questionEl.querySelector('#' + labelId.replace(/:/g, '\\:')) : undefined;
+                if (!label) {
+                    // Not found, use the old format.
+                    label = questionEl.querySelector('label[for="' + option.id + '"]');
+                }
+
                 if (label) {
                     option.text = label.innerHTML;
 

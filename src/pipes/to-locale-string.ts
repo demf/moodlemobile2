@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,9 +14,11 @@
 
 import { Pipe, PipeTransform } from '@angular/core';
 import { CoreLoggerProvider } from '@providers/logger';
+import { CoreTimeUtilsProvider } from '@providers/utils/time';
 
 /**
  * Filter to format a timestamp to a locale string. Timestamp can be in seconds or milliseconds.
+ * @deprecated since 3.6. Use coreFormatDate instead.
  */
 @Pipe({
     name: 'coreToLocaleString',
@@ -24,15 +26,15 @@ import { CoreLoggerProvider } from '@providers/logger';
 export class CoreToLocaleStringPipe implements PipeTransform {
     protected logger;
 
-    constructor(logger: CoreLoggerProvider) {
+    constructor(logger: CoreLoggerProvider, private timeUtils: CoreTimeUtilsProvider) {
         this.logger = logger.getInstance('CoreToLocaleStringPipe');
     }
 
     /**
      * Format a timestamp to a locale string.
      *
-     * @param {number|string} timestamp The timestamp (can be in seconds or milliseconds).
-     * @return {string} Formatted time.
+     * @param timestamp The timestamp (can be in seconds or milliseconds).
+     * @return Formatted time.
      */
     transform(timestamp: number | string): string {
         if (typeof timestamp == 'string') {
@@ -55,6 +57,6 @@ export class CoreToLocaleStringPipe implements PipeTransform {
             timestamp = timestamp * 1000;
         }
 
-        return new Date(timestamp).toLocaleString();
+        return this.timeUtils.userDate(timestamp, 'core.strftimedatetimeshort');
     }
 }

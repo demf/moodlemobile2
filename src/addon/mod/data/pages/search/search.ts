@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component } from '@angular/core';
+import { Component, ViewChild, ElementRef } from '@angular/core';
 import { IonicPage, NavParams, ViewController } from 'ionic-angular';
 import { FormBuilder, FormGroup } from '@angular/forms';
+import { CoreEventsProvider } from '@providers/events';
+import { CoreSitesProvider } from '@providers/sites';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreTextUtilsProvider } from '@providers/utils/text';
 import { AddonModDataComponentsModule } from '../../components/components.module';
 import { AddonModDataFieldsDelegate } from '../../providers/fields-delegate';
+import { AddonModDataHelperProvider } from '../../providers/helper';
+import { CoreTagProvider } from '@core/tag/providers/tag';
 
 /**
  * Page that displays the search modal.
@@ -30,6 +34,8 @@ import { AddonModDataFieldsDelegate } from '../../providers/fields-delegate';
     templateUrl: 'search.html',
 })
 export class AddonModDataSearchPage {
+    @ViewChild('searchFormEl') formElement: ElementRef;
+
     search: any;
     fields: any;
     data: any;
@@ -39,9 +45,17 @@ export class AddonModDataSearchPage {
     jsData: any;
     fieldsArray: any;
 
-    constructor(params: NavParams, private viewCtrl: ViewController, fb: FormBuilder, protected utils: CoreUtilsProvider,
-            protected domUtils: CoreDomUtilsProvider, protected fieldsDelegate: AddonModDataFieldsDelegate,
-            protected textUtils: CoreTextUtilsProvider) {
+    constructor(params: NavParams,
+            protected viewCtrl: ViewController,
+            fb: FormBuilder,
+            protected utils: CoreUtilsProvider,
+            protected domUtils: CoreDomUtilsProvider,
+            protected fieldsDelegate: AddonModDataFieldsDelegate,
+            protected textUtils: CoreTextUtilsProvider,
+            protected dataHelper: AddonModDataHelperProvider,
+            protected tagProvider: CoreTagProvider,
+            protected eventsProvider: CoreEventsProvider,
+            protected sitesProvider: CoreSitesProvider) {
         this.search = params.get('search');
         this.fields = params.get('fields');
         this.data = params.get('data');
@@ -79,20 +93,16 @@ export class AddonModDataSearchPage {
     /**
      * Displays Advanced Search Fields.
      *
-     * @return {string}         Generated HTML.
+     * @return Generated HTML.
      */
     protected renderAdvancedSearchFields(): string {
-        if (!this.data.asearchtemplate) {
-            return '';
-        }
-
         this.jsData = {
             fields: this.fields,
             form: this.searchForm,
             search: this.search.advanced
         };
 
-        let template = this.data.asearchtemplate,
+        let template = this.dataHelper.getTemplate(this.data, 'asearchtemplate', this.fieldsArray),
             replace, render;
 
         // Replace the fields found on template.
@@ -120,14 +130,19 @@ export class AddonModDataSearchPage {
         [placeholder]="\'addon.mod_data.authorlastname\' | translate" formControlName="lastname"></ion-input></span>';
         template = template.replace(replace, render);
 
+        // Searching by tags is not supported.
+        replace = new RegExp('##tags##', 'gi');
+        const message = '<p class="item-dimmed">{{ \'addon.mod_data.searchbytagsnotsupported\' | translate }}</p>';
+        template = template.replace(replace, this.tagProvider.areTagsAvailableInSite() ? message : '');
+
         return template;
     }
 
     /**
      * Retrieve the entered data in search in a form.
      *
-     * @param {any} searchedData Array with the entered form values.
-     * @return {any[]}          Array with the answers.
+     * @param searchedData Array with the entered form values.
+     * @return Array with the answers.
      */
     getSearchDataFromForm(searchedData: any): any[] {
         const advancedSearch = [];
@@ -168,23 +183,36 @@ export class AddonModDataSearchPage {
     /**
      * Close modal.
      *
-     * @param {any} [data] Data to return to the page.
+     * @param data Data to return to the page.
      */
     closeModal(data?: any): void {
+        if (typeof data == 'undefined') {
+            this.domUtils.triggerFormCancelledEvent(this.formElement, this.sitesProvider.getCurrentSiteId());
+        } else {
+            this.domUtils.triggerFormSubmittedEvent(this.formElement, false, this.sitesProvider.getCurrentSiteId());
+        }
+
         this.viewCtrl.dismiss(data);
     }
 
     /**
      * Toggles between advanced to normal search.
+     *
+     * @param advanced True for advanced, false for basic.
      */
-    toggleAdvanced(): void {
-        this.search.searchingAdvanced = !this.search.searchingAdvanced;
+    changeAdvanced(advanced: boolean): void {
+        this.search.searchingAdvanced = advanced;
     }
 
     /**
      * Done editing.
+     *
+     * @param e Event.
      */
-    searchEntries(): void {
+    searchEntries(e: Event): void {
+        e.preventDefault();
+        e.stopPropagation();
+
         const searchedData = this.searchForm.value;
 
         if (this.search.searchingAdvanced) {

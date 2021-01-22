@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,11 +14,10 @@
 
 import { Component, Optional } from '@angular/core';
 import { IonicPage, NavController, NavParams } from 'ionic-angular';
-import { TranslateService } from '@ngx-translate/core';
 import { CoreAppProvider } from '@providers/app';
 import { CoreDomUtilsProvider } from '@providers/utils/dom';
 import { CoreSplitViewComponent } from '@components/split-view/split-view';
-import { AddonCompetencyProvider } from '../../providers/competency';
+import { AddonCompetencyProvider, AddonCompetencyDataForPlanPageResult } from '../../providers/competency';
 import { AddonCompetencyHelperProvider } from '../../providers/helper';
 
 /**
@@ -32,13 +31,12 @@ import { AddonCompetencyHelperProvider } from '../../providers/helper';
 export class AddonCompetencyPlanPage {
     protected planId: number;
     planLoaded = false;
-    plan: any;
+    plan: AddonCompetencyDataForPlanPageResult;
     user: any;
 
-    constructor(private navCtrl: NavController, navParams: NavParams, private translate: TranslateService,
-            private appProvider: CoreAppProvider, private domUtils: CoreDomUtilsProvider,
-            @Optional() private svComponent: CoreSplitViewComponent, private competencyProvider: AddonCompetencyProvider,
-            private competencyHelperProvider: AddonCompetencyHelperProvider) {
+    constructor(private navCtrl: NavController, navParams: NavParams, private appProvider: CoreAppProvider,
+            private domUtils: CoreDomUtilsProvider, @Optional() private svComponent: CoreSplitViewComponent,
+            private competencyProvider: AddonCompetencyProvider, private competencyHelperProvider: AddonCompetencyHelperProvider) {
         this.planId = navParams.get('planId');
     }
 
@@ -54,15 +52,16 @@ export class AddonCompetencyPlanPage {
     /**
      * Fetches the learning plan and updates the view.
      *
-     * @return {Promise<void>} Promise resolved when done.
+     * @return Promise resolved when done.
      */
     protected fetchLearningPlan(): Promise<void> {
         return this.competencyProvider.getLearningPlan(this.planId).then((plan) => {
-            plan.plan.statusname = this.getStatusName(plan.plan.status);
+            plan.plan.statusname = this.competencyHelperProvider.getPlanStatusName(plan.plan.status);
             // Get the user profile image.
             this.competencyHelperProvider.getProfile(plan.plan.userid).then((user) => {
                 this.user = user;
             });
+
             this.plan = plan;
         }).catch((message) => {
             this.domUtils.showErrorModalDefault(message, 'Error getting learning plan data.');
@@ -72,7 +71,7 @@ export class AddonCompetencyPlanPage {
     /**
      * Navigates to a particular competency.
      *
-     * @param {number} competencyId
+     * @param competencyId
      */
     openCompetency(competencyId: number): void {
         const navCtrl = this.svComponent ? this.svComponent.getMasterNav() : this.navCtrl;
@@ -84,41 +83,9 @@ export class AddonCompetencyPlanPage {
     }
 
     /**
-     * Convenience function to get the status name translated.
-     *
-     * @param {number} status
-     * @return {string}
-     */
-    protected getStatusName(status: number): string {
-        let statusTranslateName;
-        switch (status) {
-            case AddonCompetencyProvider.STATUS_DRAFT:
-                statusTranslateName = 'draft';
-                break;
-            case AddonCompetencyProvider.REVIEW_STATUS_IN_REVIEW:
-                statusTranslateName = 'inreview';
-                break;
-            case AddonCompetencyProvider.REVIEW_STATUS_WAITING_FOR_REVIEW:
-                statusTranslateName = 'waitingforreview';
-                break;
-            case AddonCompetencyProvider.STATUS_ACTIVE:
-                statusTranslateName = 'active';
-                break;
-            case AddonCompetencyProvider.STATUS_COMPLETE:
-                statusTranslateName = 'complete';
-                break;
-            default:
-                // We can use the current status name.
-                return String(status);
-        }
-
-        return this.translate.instant('addon.competency.planstatus' + statusTranslateName);
-    }
-
-    /**
      * Refreshes the learning plan.
      *
-     * @param {any} refresher Refresher.
+     * @param refresher Refresher.
      */
     refreshLearningPlan(refresher: any): void {
         this.competencyProvider.invalidateLearningPlan(this.planId).finally(() => {

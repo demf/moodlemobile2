@@ -1,5 +1,5 @@
 
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,16 +37,17 @@ export class AddonQbehaviourDeferredCBMHandler implements CoreQuestionBehaviourH
     /**
      * Determine a question new state based on its answer(s).
      *
-     * @param {string} component Component the question belongs to.
-     * @param {number} attemptId Attempt ID the question belongs to.
-     * @param {any} question The question.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {CoreQuestionState|Promise<CoreQuestionState>} New state (or promise resolved with state).
+     * @param component Component the question belongs to.
+     * @param attemptId Attempt ID the question belongs to.
+     * @param question The question.
+     * @param componentId Component ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return New state (or promise resolved with state).
      */
-    determineNewState(component: string, attemptId: number, question: any, siteId?: string)
+    determineNewState(component: string, attemptId: number, question: any, componentId: string | number, siteId?: string)
             : CoreQuestionState | Promise<CoreQuestionState> {
         // Depends on deferredfeedback.
-        return this.deferredFeedbackHandler.determineNewStateDeferred(component, attemptId, question, siteId,
+        return this.deferredFeedbackHandler.determineNewStateDeferred(component, attemptId, question, componentId, siteId,
             this.isCompleteResponse.bind(this), this.isSameResponse.bind(this));
     }
 
@@ -55,10 +56,10 @@ export class AddonQbehaviourDeferredCBMHandler implements CoreQuestionBehaviourH
      * If the behaviour requires a submit button, it should add it to question.behaviourButtons.
      * If the behaviour requires to show some extra data, it should return the components to render it.
      *
-     * @param {Injector} injector Injector.
-     * @param {any} question The question.
-     * @return {any[]|Promise<any[]>} Components (or promise resolved with components) to render some extra data in the question
-     *                                (e.g. certainty options). Don't return anything if no extra data is required.
+     * @param injector Injector.
+     * @param question The question.
+     * @return Components (or promise resolved with components) to render some extra data in the question
+     *         (e.g. certainty options). Don't return anything if no extra data is required.
      */
     handleQuestion(injector: Injector, question: any): any[] | Promise<any[]> {
         if (this.questionHelper.extractQbehaviourCBM(question)) {
@@ -69,13 +70,15 @@ export class AddonQbehaviourDeferredCBMHandler implements CoreQuestionBehaviourH
     /**
      * Check if a response is complete.
      *
-     * @param {any} question The question.
-     * @param {any} answers Object with the question answers (without prefix).
-     * @return {number} 1 if complete, 0 if not complete, -1 if cannot determine.
+     * @param question The question.
+     * @param answers Object with the question answers (without prefix).
+     * @param component The component the question is related to.
+     * @param componentId Component ID.
+     * @return 1 if complete, 0 if not complete, -1 if cannot determine.
      */
-    protected isCompleteResponse(question: any, answers: any): number {
+    protected isCompleteResponse(question: any, answers: any, component: string, componentId: string | number): number {
         // First check if the question answer is complete.
-        const complete = this.questionDelegate.isCompleteResponse(question, answers);
+        const complete = this.questionDelegate.isCompleteResponse(question, answers, component, componentId);
         if (complete > 0) {
             // Answer is complete, check the user answered CBM too.
             return answers['-certainty'] ? 1 : 0;
@@ -87,7 +90,7 @@ export class AddonQbehaviourDeferredCBMHandler implements CoreQuestionBehaviourH
     /**
      * Whether or not the handler is enabled on a site level.
      *
-     * @return {boolean|Promise<boolean>} True or promise resolved with true if enabled.
+     * @return True or promise resolved with true if enabled.
      */
     isEnabled(): boolean | Promise<boolean> {
         return true;
@@ -96,17 +99,19 @@ export class AddonQbehaviourDeferredCBMHandler implements CoreQuestionBehaviourH
     /**
      * Check if two responses are the same.
      *
-     * @param {any} question Question.
-     * @param {any} prevAnswers Object with the previous question answers.
-     * @param {any} prevBasicAnswers Object with the previous basic" answers (without sequencecheck, certainty, ...).
-     * @param {any} newAnswers Object with the new question answers.
-     * @param {any} newBasicAnswers Object with the previous basic" answers (without sequencecheck, certainty, ...).
-     * @return {boolean} Whether they're the same.
+     * @param question Question.
+     * @param prevAnswers Object with the previous question answers.
+     * @param prevBasicAnswers Object with the previous basic" answers (without sequencecheck, certainty, ...).
+     * @param newAnswers Object with the new question answers.
+     * @param newBasicAnswers Object with the previous basic" answers (without sequencecheck, certainty, ...).
+     * @param component The component the question is related to.
+     * @param componentId Component ID.
+     * @return Whether they're the same.
      */
-    protected isSameResponse(question: any, prevAnswers: any, prevBasicAnswers: any, newAnswers: any, newBasicAnswers: any)
-            : boolean {
+    protected isSameResponse(question: any, prevAnswers: any, prevBasicAnswers: any, newAnswers: any, newBasicAnswers: any,
+            component: string, componentId: string | number): boolean {
         // First check if the question answer is the same.
-        const same = this.questionDelegate.isSameResponse(question, prevBasicAnswers, newBasicAnswers);
+        const same = this.questionDelegate.isSameResponse(question, prevBasicAnswers, newBasicAnswers, component, componentId);
         if (same) {
             // Same response, check the CBM is the same too.
             return prevAnswers['-certainty'] == newAnswers['-certainty'];

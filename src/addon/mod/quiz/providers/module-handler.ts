@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ import { NavController, NavOptions } from 'ionic-angular';
 import { AddonModQuizIndexComponent } from '../components/index/index';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@core/course/providers/module-delegate';
 import { CoreCourseProvider } from '@core/course/providers/course';
+import { CoreConstants } from '@core/constants';
 
 /**
  * Handler to support quiz modules.
@@ -26,12 +27,26 @@ export class AddonModQuizModuleHandler implements CoreCourseModuleHandler {
     name = 'AddonModQuiz';
     modName = 'quiz';
 
+    supportedFeatures = {
+        [CoreConstants.FEATURE_GROUPS]: true,
+        [CoreConstants.FEATURE_GROUPINGS]: true,
+        [CoreConstants.FEATURE_MOD_INTRO]: true,
+        [CoreConstants.FEATURE_COMPLETION_TRACKS_VIEWS]: true,
+        [CoreConstants.FEATURE_COMPLETION_HAS_RULES]: true,
+        [CoreConstants.FEATURE_GRADE_HAS_GRADE]: true,
+        [CoreConstants.FEATURE_GRADE_OUTCOMES]: true,
+        [CoreConstants.FEATURE_BACKUP_MOODLE2]: true,
+        [CoreConstants.FEATURE_SHOW_DESCRIPTION]: true,
+        [CoreConstants.FEATURE_CONTROLS_GRADE_VISIBILITY]: true,
+        [CoreConstants.FEATURE_USES_QUESTIONS]: true
+    };
+
     constructor(private courseProvider: CoreCourseProvider) { }
 
     /**
      * Check if the handler is enabled on a site level.
      *
-     * @return {boolean} Whether or not the handler is enabled on a site level.
+     * @return Whether or not the handler is enabled on a site level.
      */
     isEnabled(): boolean {
         return true;
@@ -40,19 +55,23 @@ export class AddonModQuizModuleHandler implements CoreCourseModuleHandler {
     /**
      * Get the data required to display the module in the course contents view.
      *
-     * @param {any} module The module object.
-     * @param {number} courseId The course ID.
-     * @param {number} sectionId The section ID.
-     * @return {CoreCourseModuleHandlerData} Data to render the module.
+     * @param module The module object.
+     * @param courseId The course ID.
+     * @param sectionId The section ID.
+     * @return Data to render the module.
      */
     getData(module: any, courseId: number, sectionId: number): CoreCourseModuleHandlerData {
         return {
-            icon: this.courseProvider.getModuleIconSrc('quiz'),
+            icon: this.courseProvider.getModuleIconSrc(this.modName, module.modicon),
             title: module.name,
             class: 'addon-mod_quiz-handler',
             showDownloadButton: true,
-            action(event: Event, navCtrl: NavController, module: any, courseId: number, options: NavOptions): void {
-                navCtrl.push('AddonModQuizIndexPage', {module: module, courseId: courseId}, options);
+            action(event: Event, navCtrl: NavController, module: any, courseId: number, options: NavOptions, params?: any): void {
+                const pageParams = {module: module, courseId: courseId};
+                if (params) {
+                    Object.assign(pageParams, params);
+                }
+                navCtrl.push('AddonModQuizIndexPage', pageParams, options);
             }
         };
     }
@@ -61,9 +80,9 @@ export class AddonModQuizModuleHandler implements CoreCourseModuleHandler {
      * Get the component to render the module. This is needed to support singleactivity course format.
      * The component returned must implement CoreCourseModuleMainComponent.
      *
-     * @param {any} course The course object.
-     * @param {any} module The module object.
-     * @return {any} The component to use, undefined if not found.
+     * @param course The course object.
+     * @param module The module object.
+     * @return The component to use, undefined if not found.
      */
     getMainComponent(course: any, module: any): any {
         return AddonModQuizIndexComponent;

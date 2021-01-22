@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ import { NgModule } from '@angular/core';
 import { IonicModule } from 'ionic-angular';
 import { TranslateModule } from '@ngx-translate/core';
 import { CoreQuestionDelegate } from '@core/question/providers/delegate';
+import { CoreComponentsModule } from '@components/components.module';
 import { CoreDirectivesModule } from '@directives/directives.module';
 import { AddonQtypeCalculatedHandler } from './providers/handler';
 import { AddonQtypeCalculatedComponent } from './component/calculated';
@@ -27,6 +28,7 @@ import { AddonQtypeCalculatedComponent } from './component/calculated';
     imports: [
         IonicModule,
         TranslateModule.forChild(),
+        CoreComponentsModule,
         CoreDirectivesModule
     ],
     providers: [

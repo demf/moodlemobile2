@@ -1,4 +1,4 @@
-// (C) Copyright 2015 Martin Dougiamas
+// (C) Copyright 2015 Moodle Pty Ltd.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,11 +15,75 @@
 import { Injectable } from '@angular/core';
 import { CoreAppProvider } from '@providers/app';
 import { CoreLoggerProvider } from '@providers/logger';
-import { CoreSitesProvider } from '@providers/sites';
+import { CoreSitesProvider, CoreSitesCommonWSOptions, CoreSitesReadingStrategy } from '@providers/sites';
 import { CoreUtilsProvider } from '@providers/utils/utils';
 import { CoreFilepoolProvider } from '@providers/filepool';
+import { CoreCourseLogHelperProvider } from '@core/course/providers/log-helper';
 import { AddonModDataOfflineProvider } from './offline';
 import { AddonModDataFieldsDelegate } from './fields-delegate';
+import { CoreRatingInfo } from '@core/rating/providers/rating';
+import { CoreSite } from '@classes/site';
+import { CoreCourseCommonModWSOptions } from '@core/course/providers/course';
+
+/**
+ * Database entry (online or offline).
+ */
+export interface AddonModDataEntry {
+    id: number; // Negative for offline entries.
+    userid: number;
+    groupid: number;
+    dataid: number;
+    timecreated: number;
+    timemodified: number;
+    approved: boolean;
+    canmanageentry: boolean;
+    fullname: string;
+    contents: AddonModDataEntryFields;
+    deleted?: boolean; // Entry is deleted offline.
+    hasOffline?: boolean; // Entry has offline actions.
+}
+
+/**
+ * Entry field content.
+ */
+export interface AddonModDataEntryField {
+    fieldid: number;
+    content: string;
+    content1: string;
+    content2: string;
+    content3: string;
+    content4: string;
+    files: any[];
+}
+
+/**
+ * Entry contents indexed by field id.
+ */
+export interface AddonModDataEntryFields {
+    [fieldid: number]: AddonModDataEntryField;
+}
+
+/**
+ * List of entries returned by web service and helper functions.
+ */
+export interface AddonModDataEntries {
+    entries: AddonModDataEntry[]; // Online entries.
+    totalcount: number; // Total count of online entries or found entries.
+    maxcount?: number; // Total count of online entries. Only returned when searching.
+    offlineEntries?: AddonModDataEntry[]; // Offline entries.
+    hasOfflineActions?: boolean; // Whether the database has offline data.
+    hasOfflineRatings?: boolean; // Whether the database has offline ratings.
+}
+
+/**
+ * Subfield form data.
+ */
+export interface AddonModDataSubfieldData {
+    fieldid: number;
+    subfield?: string;
+    value?: string; // Value encoded in JSON.
+    files?: any[];
+}
 
 /**
  * Service that provides some features for databases.
@@ -35,68 +99,81 @@ export class AddonModDataProvider {
 
     constructor(logger: CoreLoggerProvider, private sitesProvider: CoreSitesProvider, private utils: CoreUtilsProvider,
             private filepoolProvider: CoreFilepoolProvider, private dataOffline: AddonModDataOfflineProvider,
-            private appProvider: CoreAppProvider, private fieldsDelegate: AddonModDataFieldsDelegate) {
+            private appProvider: CoreAppProvider, private fieldsDelegate: AddonModDataFieldsDelegate,
+            private logHelper: CoreCourseLogHelperProvider) {
         this.logger = logger.getInstance('AddonModDataProvider');
     }
 
     /**
      * Adds a new entry to a database.
      *
-     * @param   {number}  dataId          Data instance ID.
-     * @param   {number}  entryId         EntryId or provisional entry ID when offline.
-     * @param   {number}  courseId        Course ID.
-     * @param   {any}     contents        The fields data to be created.
-     * @param   {number}  [groupId]       Group id, 0 means that the function will determine the user group.
-     * @param   {any}     fields          The fields that define the contents.
-     * @param   {string}  [siteId]        Site ID. If not defined, current site.
-     * @param   {boolean} [forceOffline]  Force editing entry in offline.
-     * @return  {Promise<any>}            Promise resolved when the action is done.
+     * @param dataId Data instance ID.
+     * @param entryId EntryId or provisional entry ID when offline.
+     * @param courseId Course ID.
+     * @param contents The fields data to be created.
+     * @param groupId Group id, 0 means that the function will determine the user group.
+     * @param fields The fields that define the contents.
+     * @param siteId Site ID. If not defined, current site.
+     * @param forceOffline Force editing entry in offline.
+     * @return Promise resolved when the action is done.
      */
-    addEntry(dataId: number, entryId: number, courseId: number, contents: any, groupId: number = 0, fields: any, siteId?: string,
-            forceOffline: boolean = false): Promise<any> {
+    async addEntry(dataId: number, entryId: number, courseId: number, contents: AddonModDataSubfieldData[], groupId: number = 0,
+            fields: any, siteId?: string, forceOffline: boolean = false): Promise<any> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
 
         // Convenience function to store a data to be synchronized later.
-        const storeOffline = (): Promise<any> => {
-            return this.dataOffline.saveEntry(dataId, entryId, 'add', courseId, groupId, contents, undefined, siteId)
-                    .then((entry) => {
-                return {
-                    // Return provissional entry Id.
-                    newentryid: entry
-                };
-            });
+        const storeOffline = async (): Promise<any> => {
+            const entry = await this.dataOffline.saveEntry(dataId, entryId, 'add', courseId, groupId, contents, undefined, siteId);
+
+            return {
+                // Return provissional entry Id.
+                newentryid: entry,
+                sent: false,
+            };
         };
 
+        // Checks to store offline.
         if (!this.appProvider.isOnline() || forceOffline) {
             const notifications = this.checkFields(fields, contents);
             if (notifications) {
-                return Promise.resolve({
-                    fieldnotifications: notifications
-                });
+                return { fieldnotifications: notifications };
             }
         }
 
-        return this.addEntryOnline(dataId, contents, groupId, siteId).catch((error) => {
+        // Remove unnecessary not synced actions.
+        await this.deleteEntryOfflineAction(dataId, entryId, 'add', siteId);
+
+        // App is offline, store the action.
+        if (!this.appProvider.isOnline() || forceOffline) {
+            return storeOffline();
+        }
+
+        try {
+            const result = await this.addEntryOnline(dataId, contents, groupId, siteId);
+            result.sent = true;
+
+            return result;
+        } catch (error) {
             if (this.utils.isWebServiceError(error)) {
                 // The WebService has thrown an error, this means that responses cannot be submitted.
-                return Promise.reject(error);
+                throw error;
             }
 
             // Couldn't connect to server, store in offline.
             return storeOffline();
-        });
+        }
     }
 
     /**
      * Adds a new entry to a database. It does not cache calls. It will fail if offline or cannot connect.
      *
-     * @param   {number} dataId     Database ID.
-     * @param   {any}    data       The fields data to be created.
-     * @param   {number} [groupId]  Group id, 0 means that the function will determine the user group.
-     * @param   {string} [siteId]   Site ID. If not defined, current site.
-     * @return  {Promise<any>}      Promise resolved when the action is done.
+     * @param dataId Database ID.
+     * @param data The fields data to be created.
+     * @param groupId Group id, 0 means that the function will determine the user group.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the action is done.
      */
-    addEntryOnline(dataId: number, data: any, groupId?: number, siteId?: string): Promise<any> {
+    addEntryOnline(dataId: number, data: AddonModDataSubfieldData[], groupId?: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
             const params = {
                     databaseid: dataId,
@@ -114,55 +191,65 @@ export class AddonModDataProvider {
     /**
      * Approves or unapproves an entry.
      *
-     * @param   {number}    dataId      Database ID.
-     * @param   {number}    entryId     Entry ID.
-     * @param   {boolean}   approve     Whether to approve (true) or unapprove the entry.
-     * @param   {number}    courseId    Course ID.
-     * @param   {string}    [siteId]    Site ID. If not defined, current site.
-     * @return  {Promise<any>}          Promise resolved when the action is done.
+     * @param dataId Database ID.
+     * @param entryId Entry ID.
+     * @param approve Whether to approve (true) or unapprove the entry.
+     * @param courseId Course ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the action is done.
      */
-    approveEntry(dataId: number, entryId: number, approve: boolean, courseId: number, siteId?: string): Promise<any> {
+    async approveEntry(dataId: number, entryId: number, approve: boolean, courseId: number, siteId?: string): Promise<any> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
 
         // Convenience function to store a data to be synchronized later.
-        const storeOffline = (): Promise<any> => {
+        const storeOffline = async (): Promise<any> => {
             const action = approve ? 'approve' : 'disapprove';
 
-            return this.dataOffline.saveEntry(dataId, entryId, action, courseId, undefined, undefined, undefined, siteId);
+            await this.dataOffline.saveEntry(dataId, entryId, action, courseId, undefined, undefined, undefined, siteId);
+
+            return {
+                sent: false,
+            };
         };
 
         // Get if the opposite action is not synced.
         const oppositeAction = approve ? 'disapprove' : 'approve';
 
-        return this.dataOffline.getEntry(dataId, entryId, oppositeAction, siteId).then(() => {
-            // Found. Just delete the action.
-            return this.dataOffline.deleteEntry(dataId, entryId, oppositeAction, siteId);
-        }).catch(() => {
+        const found = await this.deleteEntryOfflineAction(dataId, entryId, oppositeAction, siteId);
+        if (found) {
+            // Offline action has been found and deleted. Stop here.
+            return;
+        }
 
-            if (!this.appProvider.isOnline()) {
-                // App is offline, store the action.
-                return storeOffline();
+        if (!this.appProvider.isOnline()) {
+            // App is offline, store the action.
+            return storeOffline();
+        }
+
+        try {
+            await this.approveEntryOnline(entryId, approve, siteId);
+
+            return {
+                sent: true,
+            };
+        } catch (error) {
+            if (this.utils.isWebServiceError(error)) {
+                // The WebService has thrown an error, this means that responses cannot be submitted.
+                throw error;
             }
 
-            return this.approveEntryOnline(entryId, approve, siteId).catch((error) => {
-                if (this.utils.isWebServiceError(error)) {
-                    // The WebService has thrown an error, this means that responses cannot be submitted.
-                    return Promise.reject(error);
-                }
-
-                // Couldn't connect to server, store in offline.
-                return storeOffline();
-            });
-        });
+            // Couldn't connect to server, store in offline.
+            return storeOffline();
+        }
     }
 
     /**
      * Approves or unapproves an entry. It does not cache calls. It will fail if offline or cannot connect.
      *
-     * @param   {number}    entryId  Entry ID.
-     * @param   {boolean}   approve  Whether to approve (true) or unapprove the entry.
-     * @param   {string}    [siteId] Site ID. If not defined, current site.
-     * @return  {Promise<any>}       Promise resolved when the action is done.
+     * @param entryId Entry ID.
+     * @param approve Whether to approve (true) or unapprove the entry.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the action is done.
      */
     approveEntryOnline(entryId: number, approve: boolean, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -178,11 +265,11 @@ export class AddonModDataProvider {
     /**
      * Convenience function to check fields requeriments here named "notifications".
      *
-     * @param   {any}    fields    The fields that define the contents.
-     * @param   {any}    contents  The contents data of the fields.
-     * @return  {any}            Array of notifications if any or false.
+     * @param fields The fields that define the contents.
+     * @param contents The contents data of the fields.
+     * @return Array of notifications if any or false.
      */
-    protected checkFields(fields: any, contents: any): any {
+    protected checkFields(fields: any, contents: AddonModDataSubfieldData[]): any[] | false {
         const notifications = [],
             contentsIndexed = {};
 
@@ -211,65 +298,59 @@ export class AddonModDataProvider {
     /**
      * Deletes an entry.
      *
-     * @param   {number}    dataId     Database ID.
-     * @param   {number}    entryId    Entry ID.
-     * @param   {number}    courseId   Course ID.
-     * @param   {string}    [siteId]   Site ID. If not defined, current site.
-     * @return  {Promise<any>}         Promise resolved when the action is done.
+     * @param dataId Database ID.
+     * @param entryId Entry ID.
+     * @param courseId Course ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the action is done.
      */
-    deleteEntry(dataId: number, entryId: number, courseId: number, siteId?: string): Promise<any> {
+    async deleteEntry(dataId: number, entryId: number, courseId: number, siteId?: string): Promise<any> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
 
         // Convenience function to store a data to be synchronized later.
-        const storeOffline = (): Promise<any> => {
-            return this.dataOffline.saveEntry(dataId, entryId, 'delete', courseId, undefined, undefined, undefined, siteId);
+        const storeOffline = async (): Promise<any> => {
+            await this.dataOffline.saveEntry(dataId, entryId, 'delete', courseId, undefined, undefined, undefined, siteId);
+
+            return {
+                sent: false,
+            };
         };
 
-        let justAdded = false;
-
         // Check if the opposite action is not synced and just delete it.
-        return this.dataOffline.getEntryActions(dataId, entryId, siteId).then((entries) => {
-            if (entries && entries.length) {
-                // Found. Delete other actions first.
-                const proms = entries.map((entry) => {
-                    if (entry.action == 'add') {
-                        justAdded = true;
-                    }
+        const addedOffline = await this.deleteEntryOfflineAction(dataId, entryId, 'add', siteId);
+        if (addedOffline) {
+            // Offline add action found and deleted. Stop here.
+            return;
+        }
 
-                    return this.dataOffline.deleteEntry(dataId, entryId, entry.action, siteId);
-                });
+        if (!this.appProvider.isOnline()) {
+            // App is offline, store the action.
+            return storeOffline();
+        }
 
-                return Promise.all(proms);
+        try {
+            await this.deleteEntryOnline(entryId, siteId);
+
+            return {
+                sent: true,
+            };
+        } catch (error) {
+            if (this.utils.isWebServiceError(error)) {
+                // The WebService has thrown an error, this means that responses cannot be submitted.
+                throw error;
             }
-        }).then(() => {
-            if (justAdded) {
-                // The field was added offline, delete and stop.
-                return;
-            }
 
-            if (!this.appProvider.isOnline()) {
-                // App is offline, store the action.
-                return storeOffline();
-            }
-
-            return this.deleteEntryOnline(entryId, siteId).catch((error) => {
-                if (this.utils.isWebServiceError(error)) {
-                    // The WebService has thrown an error, this means that responses cannot be submitted.
-                    return Promise.reject(error);
-                }
-
-                // Couldn't connect to server, store in offline.
-                return storeOffline();
-            });
-        });
+            // Couldn't connect to server, store in offline.
+            return storeOffline();
+        }
     }
 
     /**
      * Deletes an entry. It does not cache calls. It will fail if offline or cannot connect.
      *
-     * @param   {number}  entryId  Entry ID.
-     * @param   {string}  [siteId] Site ID. If not defined, current site.
-     * @return  {Promise<any>}     Promise resolved when the action is done.
+     * @param entryId Entry ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the action is done.
      */
     deleteEntryOnline(entryId: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -282,97 +363,94 @@ export class AddonModDataProvider {
     }
 
     /**
+     * Delete entry offline action.
+     *
+     * @param dataId Database ID.
+     * @param entryId Entry ID.
+     * @param action Action name to delete.
+     * @param siteId Site ID.
+     * @return Resolved with true if the action has been found and deleted.
+     */
+    protected async deleteEntryOfflineAction(dataId: number, entryId: number, action: string, siteId: string): Promise<boolean> {
+        // Get other not not synced actions.
+        try {
+            await this.dataOffline.getEntry(dataId, entryId, action, siteId);
+
+            await this.dataOffline.deleteEntry(dataId, entryId, action, siteId);
+
+            return true;
+        } catch (error) {
+            // Not found.
+            return false;
+        }
+    }
+
+    /**
      * Updates an existing entry.
      *
-     * @param   {number}  dataId          Database ID.
-     * @param   {number}  entryId         Entry ID.
-     * @param   {number}  courseId        Course ID.
-     * @param   {any}     contents        The contents data to be updated.
-     * @param   {any}     fields          The fields that define the contents.
-     * @param   {string}  [siteId]        Site ID. If not defined, current site.
-     * @param   {boolean} forceOffline    Force editing entry in offline.
-     * @return  {Promise<any>}            Promise resolved when the action is done.
+     * @param dataId Database ID.
+     * @param entryId Entry ID.
+     * @param courseId Course ID.
+     * @param contents The contents data to be updated.
+     * @param fields The fields that define the contents.
+     * @param siteId Site ID. If not defined, current site.
+     * @param forceOffline Force editing entry in offline.
+     * @return Promise resolved when the action is done.
      */
-    editEntry(dataId: number, entryId: number, courseId: number, contents: any, fields: any, siteId?: string,
-            forceOffline: boolean = false): Promise<any> {
+    async editEntry(dataId: number, entryId: number, courseId: number, contents: AddonModDataSubfieldData[], fields: any,
+            siteId?: string, forceOffline: boolean = false): Promise<any> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
 
         // Convenience function to store a data to be synchronized later.
-        const storeOffline = (): Promise<any> => {
-            return this.dataOffline.saveEntry(dataId, entryId, 'edit', courseId, undefined, contents, undefined, siteId)
-                    .then(() => {
-                return {
-                    updated: true
-                };
-            });
-        };
+        const storeOffline = async (): Promise<any> => {
+            await this.dataOffline.saveEntry(dataId, entryId, 'edit', courseId, undefined, contents, undefined, siteId);
 
-        let justAdded = false,
-            groupId;
+            return {
+                updated: true,
+                sent: false,
+            };
+        };
 
         if (!this.appProvider.isOnline() || forceOffline) {
             const notifications = this.checkFields(fields, contents);
             if (notifications) {
-                return Promise.resolve({
-                    fieldnotifications: notifications
-                });
+                return { fieldnotifications: notifications };
             }
         }
 
-        // Get other not not synced actions.
-        return this.dataOffline.getEntryActions(dataId, entryId, siteId).then((entries) => {
-            if (entries && entries.length) {
-                // Found. Delete add and edit actions first.
-                const proms = [];
-                entries.forEach((entry) => {
-                    if (entry.action == 'add') {
-                        justAdded = true;
-                        groupId = entry.groupid;
-                        proms.push(this.dataOffline.deleteEntry(dataId, entryId, entry.action, siteId));
-                    } else if (entry.action == 'edit') {
-                        proms.push(this.dataOffline.deleteEntry(dataId, entryId, entry.action, siteId));
-                    }
-                });
+        // Remove unnecessary not synced actions.
+        await this.deleteEntryOfflineAction(dataId, entryId, 'edit', siteId);
 
-                return Promise.all(proms);
-            }
-        }).then(() => {
-            if (justAdded) {
-                // The field was added offline, add again and stop.
-                return this.addEntry(dataId, entryId, courseId, contents, groupId, fields, siteId, forceOffline)
-                        .then((result) => {
-                    result.updated = true;
+        if (!this.appProvider.isOnline() || forceOffline) {
+            // App is offline, store the action.
+            return storeOffline();
+        }
 
-                    return result;
-                });
+        try {
+            const result = await this.editEntryOnline(entryId, contents, siteId);
+            result.sent = true;
+
+            return result;
+        } catch (error) {
+            if (this.utils.isWebServiceError(error)) {
+                // The WebService has thrown an error, this means that responses cannot be submitted.
+                throw error;
             }
 
-            if (!this.appProvider.isOnline() || forceOffline) {
-                // App is offline, store the action.
-                return storeOffline();
-            }
-
-            return this.editEntryOnline(entryId, contents, siteId).catch((error) => {
-                if (this.utils.isWebServiceError(error)) {
-                    // The WebService has thrown an error, this means that responses cannot be submitted.
-                    return Promise.reject(error);
-                }
-
-                // Couldn't connect to server, store in offline.
-                return storeOffline();
-            });
-        });
-    }
+            // Couldn't connect to server, store in offline.
+            return storeOffline();
+        }
+}
 
     /**
      * Updates an existing entry. It does not cache calls. It will fail if offline or cannot connect.
      *
-     * @param   {number}  entryId  Entry ID.
-     * @param   {any}     data     The fields data to be updated.
-     * @param   {string}  [siteId] Site ID. If not defined, current site.
-     * @return  {Promise<any>}     Promise resolved when the action is done.
+     * @param entryId Entry ID.
+     * @param data The fields data to be updated.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the action is done.
      */
-    editEntryOnline(entryId: number, data: number, siteId?: string): Promise<any> {
+    editEntryOnline(entryId: number, data: AddonModDataSubfieldData[], siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
             const params = {
                     entryid: entryId,
@@ -386,50 +464,35 @@ export class AddonModDataProvider {
     /**
      * Performs the whole fetch of the entries in the database.
      *
-     * @param  {number}    dataId          Data ID.
-     * @param  {number}    [groupId]       Group ID.
-     * @param  {string}    [sort]          Sort the records by this field id. See AddonModDataProvider#getEntries for more info.
-     * @param  {string}    [order]         The direction of the sorting.  See AddonModDataProvider#getEntries for more info.
-     * @param  {number}    [perPage]       Records per page to fetch. It has to match with the prefetch.
-     *                                     Default on AddonModDataProvider.PER_PAGE.
-     * @param  {boolean}   [forceCache]    True to always get the value from cache, false otherwise. Default false.
-     * @param  {boolean}   [ignoreCache]   True if it should ignore cached data (it will always fail in offline or server down).
-     * @param  {string}    [siteId]        Site ID. If not defined, current site.
-     * @return {Promise<any>}              Promise resolved when done.
+     * @param dataId Data ID.
+     * @param options Other options.
+     * @return Promise resolved when done.
      */
-    fetchAllEntries(dataId: number, groupId: number = 0, sort: string = '0', order: string = 'DESC',
-            perPage: number = AddonModDataProvider.PER_PAGE, forceCache: boolean = false, ignoreCache: boolean = false,
-            siteId?: string): Promise<any> {
-        siteId = siteId || this.sitesProvider.getCurrentSiteId();
+    fetchAllEntries(dataId: number, options: AddonModDataGetEntriesOptions = {}): Promise<AddonModDataEntry[]> {
+        options.siteId = options.siteId || this.sitesProvider.getCurrentSiteId();
+        options.page = 0;
 
-        return this.fetchEntriesRecursive(dataId, groupId, sort, order, perPage, forceCache, ignoreCache, [], 0, siteId);
+        return this.fetchEntriesRecursive(dataId, [], options);
     }
 
     /**
      * Recursive call on fetch all entries.
      *
-     * @param  {number}    dataId          Data ID.
-     * @param  {number}    groupId         Group ID.
-     * @param  {string}    sort            Sort the records by this field id. See AddonModDataProvider#getEntries for more info.
-     * @param  {string}    order           The direction of the sorting.  See AddonModDataProvider#getEntries for more info.
-     * @param  {number}    perPage         Records per page to fetch. It has to match with the prefetch.
-     * @param  {boolean}   forceCache      True to always get the value from cache, false otherwise. Default false.
-     * @param  {boolean}   ignoreCache     True if it should ignore cached data (it will always fail in offline or server down).
-     * @param  {any}       entries         Entries already fetch (just to concatenate them).
-     * @param  {number}    page            Page of records to return.
-     * @param  {string}    siteId          Site ID.
-     * @return {Promise<any>}              Promise resolved when done.
+     * @param dataId Data ID.
+     * @param entries Entries already fetch (just to concatenate them).
+     * @param options Other options.
+     * @return Promise resolved when done.
      */
-    protected fetchEntriesRecursive(dataId: number, groupId: number, sort: string, order: string, perPage: number,
-            forceCache: boolean, ignoreCache: boolean, entries: any, page: number, siteId: string): Promise<any> {
-        return this.getEntries(dataId, groupId, sort, order, page, perPage, forceCache, ignoreCache, siteId)
-                .then((result) => {
+    protected fetchEntriesRecursive(dataId: number, entries: any, options: AddonModDataGetEntriesOptions = {})
+            : Promise<AddonModDataEntry[]> {
+        return this.getEntries(dataId, options).then((result) => {
             entries = entries.concat(result.entries);
 
-            const canLoadMore = perPage > 0 && ((page + 1) * perPage) < result.totalcount;
+            const canLoadMore = options.perPage > 0 && ((options.page + 1) * options.perPage) < result.totalcount;
             if (canLoadMore) {
-                return this.fetchEntriesRecursive(dataId, groupId, sort, order, perPage, forceCache, ignoreCache, entries, page + 1,
-                    siteId);
+                options.page++;
+
+                return this.fetchEntriesRecursive(dataId, entries, options);
             }
 
             return entries;
@@ -439,8 +502,8 @@ export class AddonModDataProvider {
     /**
      * Get cache key for data data WS calls.
      *
-     * @param {number} courseId Course ID.
-     * @return {string}         Cache key.
+     * @param courseId Course ID.
+     * @return Cache key.
      */
     protected getDatabaseDataCacheKey(courseId: number): string {
         return this.ROOT_CACHE_KEY + 'data:' + courseId;
@@ -449,8 +512,8 @@ export class AddonModDataProvider {
     /**
      * Get prefix cache key for all database activity data WS calls.
      *
-     * @param {number} dataId   Data ID.
-     * @return {string}         Cache key.
+     * @param dataId Data ID.
+     * @return Cache key.
      */
     protected getDatabaseDataPrefixCacheKey(dataId: number): string {
         return this.ROOT_CACHE_KEY + dataId;
@@ -459,25 +522,24 @@ export class AddonModDataProvider {
     /**
      * Get a database data. If more than one is found, only the first will be returned.
      *
-     * @param {number}   courseId           Course ID.
-     * @param {string}   key                Name of the property to check.
-     * @param {any}      value              Value to search.
-     * @param {string}   [siteId]           Site ID. If not defined, current site.
-     * @param {boolean}  [forceCache=false] True to always get the value from cache, false otherwise. Default false.
-     * @return {Promise<any>}  Promise resolved when the data is retrieved.
+     * @param courseId Course ID.
+     * @param key Name of the property to check.
+     * @param value Value to search.
+     * @param options Other options.
+     * @return Promise resolved when the data is retrieved.
      */
-    protected getDatabaseByKey(courseId: number, key: string, value: any, siteId?: string, forceCache: boolean = false):
+    protected getDatabaseByKey(courseId: number, key: string, value: any, options: CoreSitesCommonWSOptions = {}):
             Promise<any> {
-        return this.sitesProvider.getSite(siteId).then((site) => {
+        return this.sitesProvider.getSite(options.siteId).then((site) => {
             const params = {
-                    courseids: [courseId]
-                },
-                preSets = {
-                    cacheKey: this.getDatabaseDataCacheKey(courseId)
-                };
-            if (forceCache) {
-                preSets['omitExpires'] = true;
-            }
+                courseids: [courseId],
+            };
+            const preSets = {
+                cacheKey: this.getDatabaseDataCacheKey(courseId),
+                updateFrequency: CoreSite.FREQUENCY_RARELY,
+                component: AddonModDataProvider.COMPONENT,
+                ...this.sitesProvider.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
+            };
 
             return site.read('mod_data_get_databases_by_courses', params, preSets).then((response) => {
                 if (response && response.databases) {
@@ -495,34 +557,32 @@ export class AddonModDataProvider {
     /**
      * Get a data by course module ID.
      *
-     * @param {number}   courseId           Course ID.
-     * @param {number}   cmId               Course module ID.
-     * @param {string}   [siteId]           Site ID. If not defined, current site.
-     * @param {boolean}  [forceCache=false] True to always get the value from cache, false otherwise. Default false.
-     * @return {Promise<any>} Promise resolved when the data is retrieved.
+     * @param courseId Course ID.
+     * @param cmId Course module ID.
+     * @param options Other options.
+     * @return Promise resolved when the data is retrieved.
      */
-    getDatabase(courseId: number, cmId: number, siteId?: string, forceCache: boolean = false): Promise<any> {
-        return this.getDatabaseByKey(courseId, 'coursemodule', cmId, siteId, forceCache);
+    getDatabase(courseId: number, cmId: number, options: CoreSitesCommonWSOptions = {}): Promise<any> {
+        return this.getDatabaseByKey(courseId, 'coursemodule', cmId, options);
     }
 
     /**
      * Get a data by ID.
      *
-     * @param {number}   courseId           Course ID.
-     * @param {number}   id                 Data ID.
-     * @param {string}   [siteId]           Site ID. If not defined, current site.
-     * @param {boolean}  [forceCache=false] True to always get the value from cache, false otherwise. Default false.
-     * @return {Promise<any>}         Promise resolved when the data is retrieved.
+     * @param courseId Course ID.
+     * @param id Data ID.
+     * @param options Other options.
+     * @return Promise resolved when the data is retrieved.
      */
-    getDatabaseById(courseId: number, id: number, siteId?: string, forceCache: boolean = false): Promise<any> {
-        return this.getDatabaseByKey(courseId, 'id', id, siteId, forceCache);
+    getDatabaseById(courseId: number, id: number, options: CoreSitesCommonWSOptions = {}): Promise<any> {
+        return this.getDatabaseByKey(courseId, 'id', id, options);
     }
 
     /**
      * Get prefix cache key for all database access information data WS calls.
      *
-     * @param {number} dataId   Data ID.
-     * @return {string}         Cache key.
+     * @param dataId Data ID.
+     * @return Cache key.
      */
     protected getDatabaseAccessInformationDataPrefixCacheKey(dataId: number): string {
         return this.getDatabaseDataPrefixCacheKey(dataId) + ':access:';
@@ -531,9 +591,9 @@ export class AddonModDataProvider {
     /**
      * Get cache key for database access information data WS calls.
      *
-     * @param {number} dataId       Data ID.
-     * @param {number} [groupId=0]  Group ID.
-     * @return {string}             Cache key.
+     * @param dataId Data ID.
+     * @param groupId Group ID.
+     * @return Cache key.
      */
     protected getDatabaseAccessInformationDataCacheKey(dataId: number, groupId: number = 0): string {
         return this.getDatabaseAccessInformationDataPrefixCacheKey(dataId) + groupId;
@@ -542,33 +602,24 @@ export class AddonModDataProvider {
     /**
      * Get  access information for a given database.
      *
-     * @param   {number}    dataId              Data ID.
-     * @param   {number}    [groupId]           Group ID.
-     * @param   {boolean}   [offline=false]     True if it should return cached data. Has priority over ignoreCache.
-     * @param   {boolean}   [ignoreCache=false] True if it should ignore cached data (it'll always fail in offline or server down).
-     * @param   {string}    [siteId]            Site ID. If not defined, current site.
-     * @return  {Promise<any>}                  Promise resolved when the database is retrieved.
+     * @param dataId Data ID.
+     * @param options Other options.
+     * @return Promise resolved when the database is retrieved.
      */
-    getDatabaseAccessInformation(dataId: number, groupId?: number, offline: boolean = false, ignoreCache: boolean = false,
-            siteId?: string): Promise<any> {
-        return this.sitesProvider.getSite(siteId).then((site) => {
+    getDatabaseAccessInformation(dataId: number, options: AddonModDataAccessInfoOptions = {}): Promise<any> {
+        return this.sitesProvider.getSite(options.siteId).then((site) => {
+            options.groupId = options.groupId || 0;
+
             const params = {
-                    databaseid: dataId
-                },
-                preSets = {
-                    cacheKey: this.getDatabaseAccessInformationDataCacheKey(dataId, groupId)
-                };
-
-            if (typeof groupId !== 'undefined') {
-                params['groupid'] = groupId;
-            }
-
-            if (offline) {
-                preSets['omitExpires'] = true;
-            } else if (ignoreCache) {
-                preSets['getFromCache'] = false;
-                preSets['emergencyCache'] = false;
-            }
+                databaseid: dataId,
+                groupid: options.groupId,
+            };
+            const preSets = {
+                cacheKey: this.getDatabaseAccessInformationDataCacheKey(dataId, options.groupId),
+                component: AddonModDataProvider.COMPONENT,
+                componentId: options.cmId,
+                ...this.sitesProvider.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
+            };
 
             return site.read('mod_data_get_data_access_information', params, preSets);
         });
@@ -577,59 +628,52 @@ export class AddonModDataProvider {
     /**
      * Get entries for a specific database and group.
      *
-     * @param   {number}    dataId             Data ID.
-     * @param   {number}    [groupId=0]        Group ID.
-     * @param   {string}    [sort=0]           Sort the records by this field id, reserved ids are:
-     *                                            0: timeadded
-     *                                           -1: firstname
-     *                                           -2: lastname
-     *                                           -3: approved
-     *                                           -4: timemodified.
-     *                                          Empty for using the default database setting.
-     * @param   {string}    [order=DESC]        The direction of the sorting: 'ASC' or 'DESC'.
-     *                                          Empty for using the default database setting.
-     * @param   {number}    [page=0]            Page of records to return.
-     * @param   {number}    [perPage=PER_PAGE]  Records per page to return. Default on PER_PAGE.
-     * @param   {boolean}   [forceCache=false]  True to always get the value from cache, false otherwise. Default false.
-     * @param   {boolean}   [ignoreCache=false] True if it should ignore cached data (it'll always fail in offline or server down).
-     * @param   {string}    [siteId]            Site ID. If not defined, current site.
-     * @return  {Promise<any>}                  Promise resolved when the database is retrieved.
+     * @param dataId Data ID.
+     * @param options Other options.
+     * @return Promise resolved when the database is retrieved.
      */
-    getEntries(dataId: number, groupId: number = 0, sort: string = '0', order: string = 'DESC', page: number = 0,
-            perPage: number = AddonModDataProvider.PER_PAGE, forceCache: boolean = false, ignoreCache: boolean = false,
-            siteId?: string): Promise<any> {
-        return this.sitesProvider.getSite(siteId).then((site) => {
+    getEntries(dataId: number, options: AddonModDataGetEntriesOptions = {}): Promise<AddonModDataEntries> {
+        options.groupId = options.groupId || 0;
+        options.sort = options.sort || 0;
+        options.order = options.order || 'DESC';
+        options.page = options.page || 0;
+        options.perPage = options.perPage || AddonModDataProvider.PER_PAGE;
+
+        return this.sitesProvider.getSite(options.siteId).then((site) => {
             // Always use sort and order params to improve cache usage (entries are identified by params).
             const params = {
-                    databaseid: dataId,
-                    returncontents: 1,
-                    page: page,
-                    perpage: perPage,
-                    groupid: groupId,
-                    sort: sort,
-                    order: order
-                },
-                preSets = {
-                    cacheKey: this.getEntriesCacheKey(dataId, groupId)
-                };
+                databaseid: dataId,
+                returncontents: 1,
+                page: options.page,
+                perpage: options.perPage,
+                groupid: options.groupId,
+                sort: options.sort,
+                order: options.order,
+            };
+            const preSets = {
+                cacheKey: this.getEntriesCacheKey(dataId, options.groupId),
+                updateFrequency: CoreSite.FREQUENCY_SOMETIMES,
+                component: AddonModDataProvider.COMPONENT,
+                componentId: options.cmId,
+                ...this.sitesProvider.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
+            };
 
-            if (forceCache) {
-                preSets['omitExpires'] = true;
-            } else if (ignoreCache) {
-                preSets['getFromCache'] = false;
-                preSets['emergencyCache'] = false;
-            }
+            return site.read('mod_data_get_entries', params, preSets).then((response) => {
+                response.entries.forEach((entry) => {
+                    entry.contents = this.utils.arrayToObject(entry.contents, 'fieldid');
+                });
 
-            return site.read('mod_data_get_entries', params, preSets);
+                return response;
+            });
         });
     }
 
     /**
      * Get cache key for database entries data WS calls.
      *
-     * @param {number} dataId       Data ID.
-     * @param {number} [groupId=0]  Group ID.
-     * @return {string}             Cache key.
+     * @param dataId Data ID.
+     * @param groupId Group ID.
+     * @return Cache key.
      */
     protected getEntriesCacheKey(dataId: number, groupId: number = 0): string {
         return this.getEntriesPrefixCacheKey(dataId) + groupId;
@@ -638,8 +682,8 @@ export class AddonModDataProvider {
     /**
      * Get prefix cache key for database all entries data WS calls.
      *
-     * @param {number} dataId     Data ID.
-     * @return {string}           Cache key.
+     * @param dataId Data ID.
+     * @return Cache key.
      */
     protected getEntriesPrefixCacheKey(dataId: number): string {
         return this.getDatabaseDataPrefixCacheKey(dataId) + ':entries:';
@@ -648,31 +692,40 @@ export class AddonModDataProvider {
     /**
      * Get an entry of the database activity.
      *
-     * @param   {number}    dataId    Data ID for caching purposes.
-     * @param   {number}    entryId   Entry ID.
-     * @param   {string}    [siteId]  Site ID. If not defined, current site.
-     * @return  {Promise<any>}        Promise resolved when the database entry is retrieved.
+     * @param dataId Data ID for caching purposes.
+     * @param entryId Entry ID.
+     * @param options Other options.
+     * @return Promise resolved when the entry is retrieved.
      */
-    getEntry(dataId: number, entryId: number, siteId?: string): Promise<any> {
-        return this.sitesProvider.getSite(siteId).then((site) => {
+    getEntry(dataId: number, entryId: number, options: CoreCourseCommonModWSOptions = {}):
+             Promise<{entry: AddonModDataEntry, ratinginfo: CoreRatingInfo}> {
+        return this.sitesProvider.getSite(options.siteId).then((site) => {
             const params = {
-                    entryid: entryId,
-                    returncontents: 1
-                },
-                preSets = {
-                    cacheKey: this.getEntryCacheKey(dataId, entryId)
-                };
+                entryid: entryId,
+                returncontents: 1,
+            };
+            const preSets = {
+                cacheKey: this.getEntryCacheKey(dataId, entryId),
+                updateFrequency: CoreSite.FREQUENCY_SOMETIMES,
+                component: AddonModDataProvider.COMPONENT,
+                componentId: options.cmId,
+                ...this.sitesProvider.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
+            };
 
-            return site.read('mod_data_get_entry', params, preSets);
+            return site.read('mod_data_get_entry', params, preSets).then((response) => {
+                response.entry.contents = this.utils.arrayToObject(response.entry.contents, 'fieldid');
+
+                return response;
+            });
         });
     }
 
     /**
      * Get cache key for database entry data WS calls.
      *
-     * @param {number} dataId     Data ID for caching purposes.
-     * @param {number} entryId    Entry ID.
-     * @return {string}           Cache key.
+     * @param dataId Data ID for caching purposes.
+     * @param entryId Entry ID.
+     * @return Cache key.
      */
     protected getEntryCacheKey(dataId: number, entryId: number): string {
         return this.getDatabaseDataPrefixCacheKey(dataId) + ':entry:' + entryId;
@@ -681,27 +734,22 @@ export class AddonModDataProvider {
     /**
      * Get the list of configured fields for the given database.
      *
-     * @param  {number} dataId               Data ID.
-     * @param  {boolean} [forceCache=false]  True to always get the value from cache, false otherwise. Default false.
-     * @param  {boolean} [ignoreCache=false] True if it should ignore cached data (it will always fail in offline or server down).
-     * @param  {string} [siteId]             Site ID. If not defined, current site.
-     * @return {Promise<any>}                Promise resolved when the fields are retrieved.
+     * @param dataId Data ID.
+     * @param options Other options.
+     * @return Promise resolved when the fields are retrieved.
      */
-    getFields(dataId: number, forceCache: boolean = false, ignoreCache: boolean = false, siteId?: string): Promise<any> {
-        return this.sitesProvider.getSite(siteId).then((site) => {
+    getFields(dataId: number, options: CoreCourseCommonModWSOptions = {}): Promise<any> {
+        return this.sitesProvider.getSite(options.siteId).then((site) => {
             const params = {
-                    databaseid: dataId
-                },
-                preSets = {
-                    cacheKey: this.getFieldsCacheKey(dataId)
-                };
-
-            if (forceCache) {
-                preSets['omitExpires'] = true;
-            } else if (ignoreCache) {
-                preSets['getFromCache'] = false;
-                preSets['emergencyCache'] = false;
-            }
+                databaseid: dataId,
+            };
+            const preSets = {
+                cacheKey: this.getFieldsCacheKey(dataId),
+                updateFrequency: CoreSite.FREQUENCY_RARELY,
+                component: AddonModDataProvider.COMPONENT,
+                componentId: options.cmId,
+                ...this.sitesProvider.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
+            };
 
             return site.read('mod_data_get_fields', params, preSets).then((response) => {
                 if (response && response.fields) {
@@ -716,8 +764,8 @@ export class AddonModDataProvider {
     /**
      * Get cache key for database fields data WS calls.
      *
-     * @param {number} dataId     Data ID.
-     * @return {string}           Cache key.
+     * @param dataId Data ID.
+     * @return Cache key.
      */
     protected getFieldsCacheKey(dataId: number): string {
         return this.getDatabaseDataPrefixCacheKey(dataId) + ':fields';
@@ -727,10 +775,10 @@ export class AddonModDataProvider {
      * Invalidate the prefetched content.
      * To invalidate files, use AddonModDataProvider#invalidateFiles.
      *
-     * @param  {number} moduleId The module ID.
-     * @param  {number} courseId Course ID of the module.
-     * @param  {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>}    Promise resolved when the data is invalidated.
+     * @param moduleId The module ID.
+     * @param courseId Course ID of the module.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateContent(moduleId: number, courseId: number, siteId?: string): Promise<any> {
         siteId = siteId || this.sitesProvider.getCurrentSiteId();
@@ -743,6 +791,7 @@ export class AddonModDataProvider {
             // Do not invalidate module data before getting module info, we need it!
             ps.push(this.invalidateDatabaseData(courseId, siteId));
             ps.push(this.invalidateDatabaseWSData(data.id, siteId));
+            ps.push(this.invalidateFieldsData(data.id, siteId));
 
             return Promise.all(ps);
         }));
@@ -755,9 +804,9 @@ export class AddonModDataProvider {
     /**
      * Invalidates database access information data.
      *
-     * @param {number} dataId     Data ID.
-     * @param  {string} [siteId]  Site ID. If not defined, current site.
-     * @return {Promise<any>}     Promise resolved when the data is invalidated.
+     * @param dataId Data ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateDatabaseAccessInformationData(dataId: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -768,9 +817,9 @@ export class AddonModDataProvider {
     /**
      * Invalidates database entries data.
      *
-     * @param {number} dataId       Data ID.
-     * @param  {string} [siteId]    Site ID. If not defined, current site.
-     * @return {Promise<any>}        Promise resolved when the data is invalidated.
+     * @param dataId Data ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateEntriesData(dataId: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -779,11 +828,24 @@ export class AddonModDataProvider {
     }
 
     /**
+     * Invalidates database fields data.
+     *
+     * @param dataId Data ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
+     */
+    invalidateFieldsData(dataId: number, siteId?: string): Promise<any> {
+        return this.sitesProvider.getSite(siteId).then((site) => {
+            return site.invalidateWsCacheForKey(this.getFieldsCacheKey(dataId));
+        });
+    }
+
+    /**
      * Invalidate the prefetched files.
      *
-     * @param {number} moduleId  The module ID.
-     * @param  {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>}         Promise resolved when the files are invalidated.
+     * @param moduleId The module ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the files are invalidated.
      */
     invalidateFiles(moduleId: number, siteId?: string): Promise<any> {
         return this.filepoolProvider.invalidateFilesByComponent(siteId, AddonModDataProvider.COMPONENT, moduleId);
@@ -792,9 +854,9 @@ export class AddonModDataProvider {
     /**
      * Invalidates database data.
      *
-     * @param {number} courseId Course ID.
-     * @param {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<any>}   Promise resolved when the data is invalidated.
+     * @param courseId Course ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateDatabaseData(courseId: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -805,9 +867,9 @@ export class AddonModDataProvider {
     /**
      * Invalidates database data except files and module info.
      *
-     * @param  {number} databaseId   Data ID.
-     * @param  {string} [siteId]     Site ID. If not defined, current site.
-     * @return {Promise<any>}        Promise resolved when the data is invalidated.
+     * @param databaseId Data ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateDatabaseWSData(databaseId: number, siteId: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -818,10 +880,10 @@ export class AddonModDataProvider {
     /**
      * Invalidates database entry data.
      *
-     * @param  {number}  dataId     Data ID for caching purposes.
-     * @param  {number}  entryId    Entry ID.
-     * @param  {string}  [siteId]   Site ID. If not defined, current site.
-     * @return {Promise<any>}            Promise resolved when the data is invalidated.
+     * @param dataId Data ID for caching purposes.
+     * @param entryId Entry ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the data is invalidated.
      */
     invalidateEntryData(dataId: number, entryId: number, siteId?: string): Promise<any> {
         return this.sitesProvider.getSite(siteId).then((site) => {
@@ -832,8 +894,8 @@ export class AddonModDataProvider {
     /**
      * Return whether or not the plugin is enabled in a certain site. Plugin is enabled if the database WS are available.
      *
-     * @param  {string} [siteId] Site ID. If not defined, current site.
-     * @return {Promise<boolean>}  Promise resolved with true if plugin is enabled, rejected or resolved with false otherwise.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with true if plugin is enabled, rejected or resolved with false otherwise.
      * @since 3.3
      */
     isPluginEnabled(siteId?: string): Promise<boolean> {
@@ -845,64 +907,103 @@ export class AddonModDataProvider {
     /**
      * Report the database as being viewed.
      *
-     * @param {number} id      Module ID.
-     * @return {Promise<any>}  Promise resolved when the WS call is successful.
+     * @param id Module ID.
+     * @param name Name of the data.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved when the WS call is successful.
      */
-    logView(id: number): Promise<any> {
+    logView(id: number, name?: string, siteId?: string): Promise<any> {
         const params = {
             databaseid: id
         };
 
-        return this.sitesProvider.getCurrentSite().write('mod_data_view_database', params);
+        return this.logHelper.logSingle('mod_data_view_database', params, AddonModDataProvider.COMPONENT, id, name, 'data', {},
+                    siteId);
     }
 
     /**
      * Performs search over a database.
      *
-     * @param {number} dataId             The data instance id.
-     * @param {number} [groupId=0]        Group id, 0 means that the function will determine the user group.
-     * @param {string} [search]           Search text. It will be used if advSearch is not defined.
-     * @param {any}    [advSearch]        Advanced search data.
-     * @param {string} [sort]             Sort by this field.
-     * @param {string} [order]            The direction of the sorting.
-     * @param {number} [page=0]           Page of records to return.
-     * @param {number} [perPage=PER_PAGE] Records per page to return. Default on AddonModDataProvider.PER_PAGE.
-     * @param {string} [siteId]           Site ID. If not defined, current site.
-     * @return  {Promise<any>}            Promise resolved when the action is done.
+     * @param dataId The data instance id.
+     * @param options Other options.
+     * @return Promise resolved when the action is done.
      */
-    searchEntries(dataId: number, groupId: number = 0, search?: string, advSearch?: any, sort?: string, order?: string,
-            page: number = 0, perPage: number = AddonModDataProvider.PER_PAGE, siteId?: string): Promise<any> {
-        return this.sitesProvider.getSite(siteId).then((site) => {
+    searchEntries(dataId: number, options: AddonModDataSearchEntriesOptions = {}): Promise<AddonModDataEntries> {
+        options.groupId = options.groupId || 0;
+        options.sort = options.sort || 0;
+        options.order || options.order || 'DESC';
+        options.page = options.page || 0;
+        options.perPage = options.perPage || AddonModDataProvider.PER_PAGE;
+        options.readingStrategy = options.readingStrategy || CoreSitesReadingStrategy.PreferNetwork;
+
+        return this.sitesProvider.getSite(options.siteId).then((site) => {
             const params = {
-                    databaseid: dataId,
-                    groupid: groupId,
-                    returncontents: 1,
-                    page: page,
-                    perpage: perPage
-                },
-                preSets = {
-                    getFromCache: false,
-                    saveToCache: true,
-                    emergencyCache: true
-                };
+                databaseid: dataId,
+                groupid: options.groupId,
+                returncontents: 1,
+                page: options.page,
+                perpage: options.perPage,
+            };
+            const preSets = {
+                component: AddonModDataProvider.COMPONENT,
+                componentId: options.cmId,
+                ...this.sitesProvider.getReadingStrategyPreSets(options.readingStrategy), // Include reading strategy preSets.
+            };
 
-            if (typeof sort != 'undefined') {
-                params['sort'] = sort;
+            if (typeof options.sort != 'undefined') {
+                params['sort'] = options.sort;
             }
 
-            if (typeof order !== 'undefined') {
-                params['order'] = order;
+            if (typeof options.order !== 'undefined') {
+                params['order'] = options.order;
             }
 
-            if (typeof search !== 'undefined') {
-                params['search'] = search;
+            if (typeof options.search !== 'undefined') {
+                params['search'] = options.search;
             }
 
-            if (typeof advSearch !== 'undefined') {
-                params['advsearch'] = advSearch;
+            if (typeof options.advSearch !== 'undefined') {
+                params['advsearch'] = options.advSearch;
             }
 
-            return site.read('mod_data_search_entries', params, preSets);
+            return site.read('mod_data_search_entries', params, preSets).then((response) => {
+                response.entries.forEach((entry) => {
+                    entry.contents = this.utils.arrayToObject(entry.contents, 'fieldid');
+                });
+
+                return response;
+            });
         });
     }
 }
+
+/**
+ * Options to pass to get access info.
+ */
+export type AddonModDataAccessInfoOptions = CoreCourseCommonModWSOptions & {
+    groupId?: number; // Group Id.
+};
+
+/**
+ * Options to pass to get entries.
+ */
+export type AddonModDataGetEntriesOptions = CoreCourseCommonModWSOptions & {
+    groupId?: number; // Group Id.
+    sort?: number; // Sort the records by this field id, defaults to 0. Reserved ids are:
+                   // 0: timeadded
+                   // -1: firstname
+                   // -2: lastname
+                   // -3: approved
+                   // -4: timemodified
+    order?: string; // The direction of the sorting: 'ASC' or 'DESC'. Defaults to 'DESC'.
+    page?: number; // Page of records to return. Defaults to 0.
+    perPage?: number; // Records per page to return. Defaults to AddonModDataProvider.PER_PAGE.
+};
+
+/**
+ * Options to pass to search entries.
+ */
+export type AddonModDataSearchEntriesOptions = AddonModDataGetEntriesOptions & {
+    search?: string; // Search text. It will be used if advSearch is not defined.
+    advSearch?: any; // Advanced search data.
+};

@@ -29,32 +29,37 @@ addon-qtype-ddimageortext {
         zoom: 1;
     }
 
-    .group1 {
-        background-color: $white;
+    @for $i from 0 to length($core-dd-question-colors) {
+        .group#{$i + 1} {
+            background: nth($core-dd-question-colors, $i + 1);
+        }
     }
+
     .group2 {
-        background-color: $blue-light;
+        border-radius: 10px 0 0 0;
     }
     .group3 {
-        background-color: #DCDCDC;
+        border-radius: 0 10px 0 0;
     }
     .group4 {
-        background-color: #D8BFD8;
+        border-radius: 0 0 10px 0;
     }
     .group5 {
-        background-color: #87CEFA;
+        border-radius: 0 0 0 10px;
     }
     .group6 {
-        background-color: #DAA520;
+        border-radius: 0 10px 10px 0;
     }
     .group7 {
-        background-color: #FFD700;
+        border-radius: 10px 0 0 10px;
     }
     .group8 {
-        background-color: #F0E68C;
+        border-radius: 10px 10px 10px 10px;
     }
+
     .drag {
         border: 1px solid $gray-darker;
+        color: $text-color;
         cursor: pointer;
         z-index: 2;
     }
@@ -96,6 +101,6 @@ addon-qtype-ddimageortext {
     }
     .drag.beingdragged {
         z-index: 3;
-        box-shadow: 3px 3px 4px $gray-darker;
+        box-shadow: $core-dd-question-selected-shadow;
     }
 }
