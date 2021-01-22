@@ -14,12 +14,12 @@
 
         <div class="core-login-site-logo" *ngIf="!showSiteAvatar">
             <!-- Show site logo or a default image. -->
-            <img *ngIf="logoUrl" [src]="logoUrl" role="presentation" onError="this.src='assets/img/login_logo.png'">
-            <img *ngIf="!logoUrl" src="assets/img/login_logo.png" role="presentation">
+            <img *ngIf="logoUrl" [src]="logoUrl" role="presentation" onError="this.src='assets/img/login_logo.png'" width="80%">
+            <img *ngIf="!logoUrl" src="assets/img/login_logo.png" role="presentation" width="80%">
         </div>
 
         <h3 *ngIf="siteName" padding class="core-sitename"><core-format-text [text]="siteName" [filter]="false"></core-format-text></h3>
-        <p class="core-siteurl">{{siteUrl}}</p>
+   
 
         <p *ngIf="!isLoggedOut" class="core-login-reconnect-warning">
             <ion-icon padding name="alert"></ion-icon> {{ 'core.login.reconnectdescription' | translate }}

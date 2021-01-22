@@ -269,7 +269,7 @@ export const WP_PROVIDER: any = null;
         AddonBlockLearningPlansModule,
         AddonBlockMyOverviewModule,
         AddonBlockNewsItemsModule,
-        AddonBlockOnlineUsersModule,
+        //AddonBlockOnlineUsersModule,
         AddonBlockPrivateFilesModule,
         AddonBlockSiteMainMenuModule,
         AddonBlockTimelineModule,
