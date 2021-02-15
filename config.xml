@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <widget android-versionCode="39400" id="com.moodle.moodlemobile" ios-CFBundleVersion="3.9.4.0" version="3.9.4" versionCode="39400" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-    <name>Moodle</name>
-    <description>Moodle official app</description>
+    <name>Virtualys</name>
+    <description>Construimos Conocimientos</description>
     <author email="mobile@moodle.com" href="http://moodle.com">Moodle Mobile team</author>
     <content src="index.html" />
     <access origin="*" />
@@ -38,7 +38,7 @@
     <preference name="SplashScreenDelay" value="15000" />
     <preference name="SplashMaintainAspectRatio" value="true" />
     <preference name="SplashShowOnlyFirstTime" value="false" />
-    <preference name="android-minSdkVersion" value="19" />
+    <preference name="android-minSdkVersion" value="28" />
     <preference name="android-targetSdkVersion" value="29" />
     <preference name="AndroidPersistentFileLocation" value="Compatibility" />
     <preference name="CustomURLSchemePluginClearsAndroidIntent" value="true" />
@@ -48,6 +48,8 @@
     <feature name="StatusBar">
         <param name="ios-package" onload="true" value="CDVStatusBar" />
     </feature>
+    <splash src="resources/splash.png" />
+    <icon src="resources/icon.png" />
     <platform name="android">
         <resource-file src="MainActivity.java" target="app/src/main/java/com/moodle/moodlemobile/MainActivity.java" />
         <resource-file src="google-services.json" target="app/google-services.json" />
