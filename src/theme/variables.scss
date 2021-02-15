@@ -477,7 +477,7 @@ $core-dd-question-colors: $white, $blue-light, #DCDCDC, #D8BFD8, #87CEFA, #DAA52
     }
 
     [text-wrap] .label {
-        h2, p {
+        h2, p{
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -510,7 +510,7 @@ $core-dd-question-colors: $white, $blue-light, #DCDCDC, #D8BFD8, #87CEFA, #DAA52
   h4 {
     border-left-color: rgba(22,112,204, 1);
     border-left-style: solid;
-    font-size: 19.95px;
+    font-size: 1.8rem;
     line-height: 1.2;
     padding-left: 0.4em;
     border-left-width: 10px;
@@ -522,7 +522,7 @@ $core-dd-question-colors: $white, $blue-light, #DCDCDC, #D8BFD8, #87CEFA, #DAA52
     overflow: hidden;
   }
   h5 {
-    font-size: 1.8rem;
+    font-size: 2rem;
   }
   h6 {
     font-size: 1.4rem;
