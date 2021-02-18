@@ -1,5 +1,5 @@
 {
-    "app_id": "com.moodle.moodlemobile",
+    "app_id": "cl.virtualys.app",
     "appname": "Virtualys",
     "desktopappname": "Virtualys",
     "versioncode": 3940,
@@ -8,7 +8,7 @@
     "cache_update_frequency_often": 1200000,
     "cache_update_frequency_sometimes": 3600000,
     "cache_update_frequency_rarely": 43200000,
-    "default_lang": "en",
+    "default_lang": "es-mx",
     "languages": {
         "ar": "عربي",
         "bg": "Български",
@@ -104,7 +104,7 @@
     "forceLoginLogo": false,
     "ioswebviewscheme": "moodleappfs",
     "appstores": {
-        "android": "com.moodle.moodlemobile",
+        "android": "cl.virtualys.app",
         "ios": "id633359593",
         "windows": "moodle-desktop\/9p9bwvhdc8c8",
         "mac": "id1255924440",

@@ -1,10 +1,10 @@
 {
-  "name": "moodlemobile",
+  "name": "virtualysapp",
   "version": "3.9.4",
-  "description": "The official app for Moodle.",
+  "description": "Construimos conocimiento",
   "author": {
-    "name": "Moodle Pty Ltd.",
-    "email": "mobile@moodle.com"
+    "name": "Nicolas Santander",
+    "email": "nsantander@virtualys.cl"
   },
   "config": {
     "ionic_webpack": "./config/webpack.config.js",
@@ -147,7 +147,6 @@
     "@types/node": "^8.10.59",
     "@types/promise.prototype.finally": "^2.0.4",
     "acorn": "^5.7.4",
-    "cordova-android": "^9.0.0",
     "cordova-ios": "^6.1.1",
     "cordova.plugins.diagnostic": "^5.0.2",
     "electron-builder-lib": "^20.23.1",
@@ -176,7 +175,9 @@
     "electron": false
   },
   "cordova": {
-    "platforms": [],
+    "platforms": [
+      "android"
+    ],
     "plugins": {
       "com-darryncampbell-cordova-plugin-intent": {},
       "cordova-android-support-gradle-release": {
@@ -229,8 +230,8 @@
   },
   "main": "desktop/electron.js",
   "build": {
-    "appId": "com.moodle.moodledesktop",
-    "productName": "Moodle Desktop",
+    "appId": "cl.virtualys.desktopapp",
+    "productName": "Virtualys Desktop",
     "files": [
       "desktop/electron.js",
       "www/**/*",

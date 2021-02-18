@@ -128,8 +128,8 @@ fs.readFile(path.join(__dirname, 'config.json'), 'utf8', (err, data) => {
     configRead = true;
 
     // Default values.
-    var ssoScheme = 'moodlemobile',
-        appId = 'com.moodle.moodlemobile';
+    var ssoScheme = 'virtualysapp',
+        appId = 'cl.virtualys.app';
 
     if (!err) {
         try {
